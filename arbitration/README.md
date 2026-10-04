@@ -4,7 +4,6 @@ OceanBase PALF 仲裁副本（2F1A）的单日志流模型：选举、Phase 1（
 
 - 设计：[`../docs/specs/2026-10-04-arbitration-tla-design.md`](../docs/specs/2026-10-04-arbitration-tla-design.md)
 - 结果：[`results.md`](results.md)
-- 发现的问题：[`findings.md`](findings.md)，反例轨迹在 `findings/`
 
 | 文件 | 内容 |
 |---|---|
