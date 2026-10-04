@@ -1,0 +1,378 @@
+Error: Invariant NoDualPrimary is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> None @@ f2 :> None)
+/\ promises = (f1 :> {} @@ f2 :> {})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 0 @@ f2 :> 0 @@ a :> 0)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Follower" @@ f2 :> "Follower")
+
+State 2: <Elect line 167, col 3 to line 176, col 57 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> None @@ f2 :> None)
+/\ promises = (f1 :> {f1} @@ f2 :> {})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 0 @@ a :> 0)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Prepare" @@ f2 :> "Follower")
+
+State 3: <Elect line 167, col 3 to line 176, col 57 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> None @@ f2 :> None)
+/\ promises = (f1 :> {f1} @@ f2 :> {f2})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 1 @@ a :> 0)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Prepare" @@ f2 :> "Prepare")
+
+State 4: <Promise line 180, col 3 to line 191, col 57 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> None @@ f2 :> None)
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 1 @@ a :> 1)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Prepare" @@ f2 :> "Prepare")
+
+State 5: <Elect line 167, col 3 to line 176, col 57 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> None @@ f2 :> None)
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 1)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Prepare" @@ f2 :> "Prepare")
+
+State 6: <Fetch line 196, col 3 to line 203, col 71 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> None @@ f2 :> None)
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 1)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Reconfirm" @@ f2 :> "Prepare")
+
+State 7: <StartWorking line 226, col 3 to line 229, col 56 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> [kind |-> "StartWorking", acks |-> {f1}] @@ f2 :> None)
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 1)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Reconfirm" @@ f2 :> "Prepare")
+
+State 8: <SendMeta line 259, col 3 to line 278, col 46 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> [kind |-> "StartWorking", acks |-> {f1, a}] @@ f2 :> None)
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 1)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Reconfirm" @@ f2 :> "Prepare")
+
+State 9: <CommitConfig line 284, col 3 to line 293, col 50 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> None @@ f2 :> None)
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 1)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Leader" @@ f2 :> "Prepare")
+
+State 10: <Degrade line 235, col 3 to line 241, col 39 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> [kind |-> "Degrade", acks |-> {f1}] @@ f2 :> None)
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1}, ver |-> <<1, 2>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 1)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Leader" @@ f2 :> "Prepare")
+
+State 11: <SendMeta line 259, col 3 to line 278, col 46 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> [kind |-> "Degrade", acks |-> {f1, a}] @@ f2 :> None)
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1}, ver |-> <<1, 2>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1}, ver |-> <<1, 2>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 1)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Leader" @@ f2 :> "Prepare")
+
+State 12: <Promise line 180, col 3 to line 191, col 57 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> [kind |-> "Degrade", acks |-> {f1, a}] @@ f2 :> None)
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2, a})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1}, ver |-> <<1, 2>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1}, ver |-> <<1, 2>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 2)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Leader" @@ f2 :> "Prepare")
+
+State 13: <Fetch line 196, col 3 to line 203, col 71 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> [kind |-> "Degrade", acks |-> {f1, a}] @@ f2 :> None)
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2, a})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1}, ver |-> <<1, 2>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1}, ver |-> <<1, 2>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 2)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Leader" @@ f2 :> "Reconfirm")
+
+State 14: <StartWorking line 226, col 3 to line 229, col 56 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = ( f1 :> [kind |-> "Degrade", acks |-> {f1, a}] @@
+  f2 :> [kind |-> "StartWorking", acks |-> {f2}] )
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2, a})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1}, ver |-> <<1, 2>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<2, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1}, ver |-> <<1, 2>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 2)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Leader" @@ f2 :> "Reconfirm")
+
+State 15: <SendMeta line 259, col 3 to line 278, col 46 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = ( f1 :> [kind |-> "Degrade", acks |-> {f1, a}] @@
+  f2 :> [kind |-> "StartWorking", acks |-> {f2, a}] )
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2, a})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1}, ver |-> <<1, 2>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<2, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<2, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 2)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Leader" @@ f2 :> "Reconfirm")
+
+State 16: <CommitConfig line 284, col 3 to line 293, col 50 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> [kind |-> "Degrade", acks |-> {f1, a}] @@ f2 :> None)
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2, a})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1}, ver |-> <<1, 2>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<2, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<2, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 2)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Leader" @@ f2 :> "Leader")
+
+State 17: <CommitConfig line 284, col 3 to line 293, col 50 of module Arbitration>
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ a :> TRUE)
+/\ log = (f1 :> <<>> @@ f2 :> <<>>)
+/\ cc = (f1 :> None @@ f2 :> None)
+/\ promises = (f1 :> {f1, a} @@ f2 :> {f2, a})
+/\ meta = ( f1 :>
+      [ curr |-> [sync |-> {f1}, ver |-> <<1, 2>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<1, 1>>] ] @@
+  f2 :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<2, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [sync |-> {f1, f2}, ver |-> <<2, 1>>],
+        barrier |-> [pid |-> 0, idx |-> 0],
+        prev |-> [sync |-> {f1, f2}, ver |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ pid = (f1 :> 1 @@ f2 :> 2 @@ a :> 2)
+/\ commitIdx = (f1 :> 0 @@ f2 :> 0)
+/\ role = (f1 :> "Leader" @@ f2 :> "Leader")
+
