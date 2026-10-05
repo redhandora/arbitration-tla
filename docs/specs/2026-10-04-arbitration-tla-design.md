@@ -8,7 +8,7 @@
 - **目的：** 为仲裁论文的 TLA+ 和证明部分提供一份可以模型检查的规格，证明 PALF 在仲裁副本（A）参与下：
   - 满足一组安全性不变式；
   - 满足活性：少数派异常时，系统总能恢复服务。
-- **建模对象：** 单个日志流，默认 2F1A，F 的个数可配（以后可跑 4F1A）。
+- **建模对象：** 单个日志流，F 的个数可配；检查了 2F1A 和 4F1A。
 - **依据：** OceanBase 源码 `src/logservice/palf/`（GitHub，提交 `0fa1778`，2026-09-30）。A 侧代码不在开源仓库里，相关行为按作者确认的三条假设建模（见 §6）。
 - **范围内：** 选举、Phase 1（reconfirm）、Phase 2（日志和配置）、degrade、upgrade、START_WORKING、A 作为选举 leader 推送配置、F 和 A 的崩溃与重启。
 - **范围外：** add / remove / replace 成员、flashback（mode meta）、租约读、磁盘永久丢失、F 数为奇数的部署。
@@ -30,7 +30,7 @@
 | 选举成员 = 同步列表 + A | `ElectionMembers(s) == meta[s].curr.sync \cup {A}` |
 | 日志提交只看同步列表，A 不算 | `CommitLog` 只在 `curr.sync` 上计算多数派 |
 | 挂掉一个 F 后，剩下的 F + A 能选出 leader | `CanBeElected`、`Promise`、`Fetch` 都按 `ElectionMembers` 计算多数派 |
-| 删掉挂掉的 F | `Degrade`，新的 `sync` 只剩幸存的 F |
+| 删掉挂掉的 F | `Degrade`，每次去掉一个成员，最终 `sync` 只剩幸存的 F |
 
 **为什么 A 没有日志也安全：** 2F1A 的同步多数派是全部 F，所以已提交的日志一定在每个同步列表里的 F 上。任何选举多数派里至少有一个这样的 F，Phase 1 从它那里就能拉到完整日志。不变式 I1 检查的就是这一点。
 
@@ -80,6 +80,7 @@
 | `alive` | Server | 是否存活，见 §4.1 |
 | `role` | F | `Follower`、`Prepare`、`Reconfirm`、`Leader` 之一 |
 | `promises` | F | Phase 1 收到的应答集合（`prepare_log_ack_list_`，含自己） |
+| `pq` | F | `Elect` 时固定下来的 `[mem, ver]`：prepare 名单（`init_reconfirm_` 里的 `curr_paxos_follower_list_` 加自己）和发起这一轮选举时的配置版本。`Promise` 和 `Fetch` 按名单计算多数派，`Promise` 的版本过滤也用这个版本（候选在 prepare 中途从同 pid 的另一个 leader 接受的配置，不会让它这一轮的选举变新）；离开 Prepare、退位或崩溃时清空 |
 | `cc` | F | 进行中的配置变更 `[kind, acks]`，或 `None`。`kind` 取 `StartWorking`、`Degrade`、`Upgrade` 之一（`ConfigChangeState` 和 `ms_ack_list_`） |
 | `commitIdx` | F | leader 的 committed_end_lsn |
 
@@ -96,7 +97,7 @@
 
 ### 4.1 `alive` 怎么建模
 
-- **崩溃 `Crash(s)`：** `alive[s] := FALSE`，并清空 s 的易失状态（`role` 回到 `Follower`，`promises`、`cc`、`commitIdx` 清空）。持久化状态 `pid`、`log`、`meta` 保留。
+- **崩溃 `Crash(s)`：** `alive[s] := FALSE`，并清空 s 的易失状态（`role` 回到 `Follower`，`promises`、`pq`、`cc`、`commitIdx` 清空）。持久化状态 `pid`、`log`、`meta` 保留。
 - **重启 `Restart(s)`：** `alive[s] := TRUE`，从持久化状态继续。
 - **宕机期间：** 所有动作都要求参与方存活，所以宕机的副本既不发消息，也不收消息。
 - **网络分区不单独建模。** 共享状态模型里，任何两个副本之间的动作都可以一直不发生，分区就等于"这些动作没发生"。被分区隔开的旧 leader 仍然存活、保留易失状态，还能在本地写日志，这正是"租约过期但旧 leader 还在写"的最坏情况。
@@ -136,7 +137,7 @@ MajorityCaughtUp(l, S)  == IsMajority({f \in S : LogCaughtUp(f, log[l])}, S)
                            \* wait_log_barrier_ / check_follower_sync_status_ / is_accept_quorum_catch_up_
 ```
 
-`StepDown(v, p)`：如果 `v` 是 F、`role[v] /= Follower`，并且 `pid[v] < p`，就把它置为 `Follower`，同时清空 `cc` 和 `promises`。对应 `handle_prepare_request` 里的 `leader_active_to_follower_pending_` 和 `reconfirm_to_follower_pending_`。
+`StepDown(v, p)`：如果 `v` 是 F、`role[v] /= Follower`，并且 `pid[v] < p`，就把它置为 `Follower`，同时清空 `cc`、`promises` 和 `pq`。对应 `handle_prepare_request` 里的 `leader_active_to_follower_pending_` 和 `reconfirm_to_follower_pending_`。
 
 `ReceiveMeta(v, m, p)` 表示 v 接收一份由 pid 为 p 的发送方发来的 meta m：
 - **条件：**
@@ -159,9 +160,9 @@ MajorityCaughtUp(l, S)  == IsMajority({f \in S : LogCaughtUp(f, log[l])}, S)
 
 | 动作 | 条件 | 效果 |
 |---|---|---|
-| `Elect(c, b)` | c 是存活的 F；`role[c]` 为 `Follower` 或 `Prepare`；`c \in meta[c].curr.sync`（proposer 不在列表里就放弃，`election_proposer.cpp:409`）；`CanBeElected(c)`；`pid[c] < b <= MaxPid` | `pid[c] := b`，`role[c] := Prepare`，`promises[c] := {c}`，`cc[c] := None` |
-| `Promise(v, c)` | `role[c] = Prepare`；`v \in ElectionMembers(c) \ {c}`；两者存活；`VersionLE(meta[v].curr.ver, meta[c].curr.ver)`（c 只在持有选举时做 prepare，而投票方不支持配置版本更低的候选，见 `election_acceptor.cpp:226`）；`pid[v] < pid[c]` | `pid[v] := pid[c]`，`StepDown(v, pid[c])`，`promises[c] := promises[c] \cup {v}` |
-| `Fetch(c)` | `role[c] = Prepare`；`IsMajority(promises[c], ElectionMembers(c))` | 在 `promises[c] \cap F` 中选 `(AcceptedPid, Len)` 最大的 m（A 不参与，假设 1），`log[c] := log[m]`，`role[c] := Reconfirm` |
+| `Elect(c, b)` | c 是存活的 F；`role[c]` 为 `Follower` 或 `Prepare`；`c \in meta[c].curr.sync`（proposer 不在列表里就放弃，`election_proposer.cpp:409`）；`CanBeElected(c)`；`pid[c] < b <= MaxPid` | `pid[c] := b`，`role[c] := Prepare`，`promises[c] := {c}`，`pq[c] := [mem ↦ ElectionMembers(c), ver ↦ meta[c].curr.ver]`，`cc[c] := None` |
+| `Promise(v, c)` | `role[c] = Prepare`；`v \in pq[c].mem \ {c}`；两者存活；`VersionLE(meta[v].curr.ver, pq[c].ver)`（c 只在持有选举时做 prepare，而投票方不支持配置版本更低的候选，见 `election_acceptor.cpp:226`）；`pid[v] < pid[c]` | `pid[v] := pid[c]`，`StepDown(v, pid[c])`，`promises[c] := promises[c] \cup {v}` |
+| `Fetch(c)` | `role[c] = Prepare`；`IsMajority(promises[c], pq[c].mem)`（多数派按 `Elect` 时固定的名单计算，`prepare_quorum_cnt_` 只在 `init_reconfirm_` 里算一次） | 在 `promises[c] \cap F` 中选 `(AcceptedPid, Len)` 最大的 m（A 不参与，假设 1），`log[c] := log[m]`，`role[c] := Reconfirm`，清空 `pq[c]` |
 
 ### Phase 2-配置
 
@@ -170,14 +171,15 @@ MajorityCaughtUp(l, S)  == IsMajority({f \in S : LogCaughtUp(f, log[l])}, S)
 | 动作 | 额外条件 | 新 sync | 源码 |
 |---|---|---|---|
 | `StartWorking(l)` | `role[l] = Reconfirm` | 不变 | `confirm_start_working_log` |
-| `Degrade(l, S)` | `role[l]` 为 `Reconfirm` 或 `Leader`（`can_do_degrade`）；`meta[l].curr.sync = F`；`S \subseteq F \ {l}`；`Cardinality(S) * 2 = Cardinality(F)`。S 中的副本可以是活着的，用来模拟误判 | `F \ S` | `is_leader_for_config_change_`、`degrade_acceptor_to_learner` |
+| `Degrade(l, s)` | `role[l]` 为 `Reconfirm` 或 `Leader`（`can_do_degrade`）；`s \in meta[l].curr.sync \ {l}`；去掉 s 后同步列表仍不少于一半的 F。s 可以是活着的，用来模拟误判 | 去掉 s | 仲裁服务决定降级一半的 F，但 `degrade_acceptor_to_learner` 对每个成员单独做一次配置变更（`one_stage_config_change_`），所以相邻配置只差一个成员 |
 | `Upgrade(l, m)` | `role[l] = Leader`；`m \in F \ meta[l].curr.sync`；m 存活；`log[m] = log[l]` | 加上 m | `upgrade_learner_to_acceptor` |
 
 | 动作 | 条件 | 效果 |
 |---|---|---|
 | `SendMeta(v, l)` | l 是存活的 F；v 存活，`v /= l`；`ReceiveMeta(v, meta[l], pid[l])` 的条件成立；并且满足以下之一：(a) `cc[l] /= None` 且 `v \notin cc[l].acks`（发送进行中的变更）；(b) `role[l] = Leader`、`cc[l] = None`，且 v 的配置版本更旧（补发当前配置） | 执行 `ReceiveMeta`；情况 (a) 下把 v 加入 `acks`。发送对象包括 learner（假设 3），但只有新列表里的确认才计入多数派 |
-| `CommitConfig(l)` | `cc[l] /= None`；`IsMajority(cc[l].acks, ElectionMembers(l))`，这里按新配置计算（`is_reach_majority_`） | `cc[l] := None`；如果 `kind = StartWorking`：`role[l] := Leader`，`commitIdx[l] := barrier.idx`，并把 `log[l]` 中直到 barrier 的条目加入 `committed`（推进到 `saved_end_lsn_`） |
-| `ArbPush(f)` | A 和 f 都存活；`CanBeElected(A)`（A 总在 `ElectionMembers(A)` 里）；所有 F 的 `role` 都是 `Follower`（A 是选举 leader 时，没有 F 处于 leader 角色）；f 的配置版本比 A 的旧；`ReceiveMeta(f, meta[A], pid[A])` 的条件成立 | 执行 `ReceiveMeta`（`sync_meta_for_arb_election_leader`） |
+| `CommitConfig(l)` | `cc[l] /= None`；`IsMajority(cc[l].acks, ElectionMembers(l))`，这里按新配置计算（`is_reach_majority_`）；如果是 leader 在 `Reconfirm` 中做的 degrade，还要求确认人数达到旧配置（`meta[l].prev`）选举成员的多数派（修正问题 4，见 `arbitration/findings.md`） | `cc[l] := None`；如果 `kind = StartWorking`：`role[l] := Leader`，`commitIdx[l] := barrier.idx`，并把 `log[l]` 中直到 barrier 的条目加入 `committed`（推进到 `saved_end_lsn_`） |
+| `ArbPush(f)` | A 和 f 都存活；`CanBeElected(A)`（A 总在 `ElectionMembers(A)` 里）；f 的配置版本比 A 的旧；`ReceiveMeta(f, meta[A], pid[A])` 的条件成立。不要求其他 F 都是 Follower（不建模 lease）；f 若处于 leader 角色且 pid 更小，就退位 | 执行 `ReceiveMeta`（`sync_meta_for_arb_election_leader`） |
+| `ArbCatchUpPid(f)` | A 和 f 都存活；`CanBeElected(A)`；f 的配置版本比 A 的旧（A 要向它推送）；`pid[A] < pid[f]`（推送会被拒绝） | `pid[A] := pid[f]`。修正问题 3：接收方拒绝时带回自己的 pid，A 追上后重推。源码里接收方静默拒绝，见 `arbitration/findings.md` 问题 3 |
 
 ### Phase 2-日志
 
@@ -217,36 +219,46 @@ MajorityCaughtUp(l, S)  == IsMajority({f \in S : LogCaughtUp(f, log[l])}, S)
 - `PidMonotonic`：每个副本的 `pid` 只增不减。
 - `ConfigVersionMonotonic`：每个副本的 `meta.curr.ver` 只增不减。
 
-## 9. 活性：少数派异常时总能恢复服务
+## 9. 活性：从全部正常出发，少数派异常时总能恢复服务
 
 ### 要证明的性质
 
 ```
-Serving(l) == alive[l] /\ role[l] = "Leader" /\ cc[l] = None
-              /\ IsMajority({f \in meta[l].curr.sync : alive[f]}, meta[l].curr.sync)
-              /\ commitIdx[l] = Len(log[l])
+StableLeader(l) == alive[l] /\ role[l] = "Leader" /\ cc[l] = None
+                   /\ IsMajority({f \in meta[l].curr.sync : alive[f]}, meta[l].curr.sync)
 
-EventuallyServing == <>[](\E l \in F : Serving(l))
+EventuallyStableLeader == <>[](\E l \in F : StableLeader(l))
+
+WritesCommit ==
+  \A l \in F, i \in 1..MaxLogLen :
+     (alive[l] /\ role[l] = "Leader" /\ Len(log[l]) >= i)
+        ~> (commitIdx[l] >= i \/ ~alive[l] \/ role[l] # "Leader")
 ```
 
-含义：从全部正常的状态出发，只要异常的副本始终是少数派，系统最终会稳定在"有一个 leader，它同步列表中的多数派存活，并且自己写下的日志全部已提交"的状态。
+含义：
+- `EventuallyStableLeader`：最终总有一个存活的 leader，没有进行中的配置变更，同步列表中的多数派存活，并且一直保持下去。
+- `WritesCommit`：leader 写下的每个位置，只要它一直是存活的 leader，最终都会提交。按位置逐个表述，不依赖写入有上限。
+
+（最初的写法 `EventuallyServing` 要求最终"所有写入都已提交"，只在写入有上限时成立，审查后改成上面两条。）
 
 ### 活性的前提（环境假设）
 
-活性用同一个模块里的另一组 Next，叫 `LiveNext`。它复用 §7 的动作，只额外加上下面几条**环境**约束：
+活性用同一个模块里的另一组 Next，叫 `LiveNext`。它复用 §7 的动作，只额外加上下面几条**环境**约束。这些约束**从初始状态起一直成立**，所以结论是"从全部正常出发"：不包括先经历一段混乱（多个候选竞争、误判 degrade、副本重启）之后再稳定下来的情况。
 
 | 假设 | 写法 | 理由 |
 |---|---|---|
 | 异常是少数派，并且不恢复 | `Crash(s)` 只在 `Cardinality(宕机集合 \cup {s}) * 2 < Cardinality(Server)` 时允许；没有 `Restart` | "少数派异常"的定义；从全部正常出发 |
-| 选举最终稳定 | 只有当没有其他存活的 F 处于非 `Follower` 状态时才发起选举（相当于 lease 有效时不重选）；`b` 取存活副本 pid 的最大值加 1（相当于被拒绝后学到更大的 pid 再重试） | 对应 Paxos 活性所需的"最终只有一个 proposer" |
-| 故障检测最终准确 | `Degrade` 只降级真正宕机的 F；`Upgrade` 不出现（宕机的副本不会回来） | 对应三步 degrade 中的探测确认 |
+| 选举稳定 | 只有当没有其他存活的 F 处于非 `Follower` 状态时才发起选举；候选只在卡住时重试；`b` 取存活副本 pid 的最大值加 1；卡住且已不可能当选的候选退回 Follower（`LoseElection`，对应续不上选举 lease） | 对应 Paxos 活性所需的"只有一个 proposer" |
+| 故障检测准确 | `Degrade` 只降级真正宕机的 F（每次一个）；`Upgrade` 不出现（宕机的副本不会回来） | 对应三步 degrade 中的探测确认 |
 | 公平性 | 除 `Write`、`Crash` 外，所有动作都加弱公平 `WF_vars` | 客户端可以停止写入，故障不是必然发生 |
 
 安全性检查不加这些约束：选举可以随时发生、degrade 可以误判、副本可以重启。
 
+"先混乱、后稳定"的情况（在某个时刻之后环境才满足上述约束）留作后续工作。
+
 ### 不在活性保证之内的情况（论文需要写明的边界）
 
-如果 degrade 之后，被降级的 F 已经恢复、但还没完成 upgrade（它仍是 learner），这时唯一的同步 F 又发生故障，那么异常的副本虽然只有一个，系统也无法服务：数据只在那个故障的 F 上，learner 的日志可能不全。这就是原稿说的单副本窗口。活性性质从"全部正常"出发，所以不包括这种情况。可以加一条见证，证明这种情况确实会不可用。
+如果 degrade 之后，被降级的 F 已经恢复、但还没完成 upgrade（它仍是 learner），这时同步列表里的 F 又发生故障，那么异常的副本虽然只是少数派，系统也无法服务：数据只在那个故障的 F 上，learner 的日志可能不全。这就是原稿说的单副本窗口。活性性质从"全部正常"出发，所以不包括这种情况；见证 `NoLearnerWindow` 证明这个状态确实可达。
 
 ## 10. 验证方法
 
@@ -256,7 +268,10 @@ EventuallyServing == <>[](\E l \in F : Serving(l))
 |---|---|
 | `Arbitration.tla` | 模型 |
 | `Arbitration.cfg` | 安全性：2F1A，检查 §8 的全部性质，F 对称 |
-| `Liveness.cfg` | 活性：`LiveSpec`，检查 `EventuallyServing`。不用对称（TLC 在对称下做活性检查不可靠），边界取更小的值 |
+| `Arbitration4F.cfg` | 安全性：4F1A，边界更小，F 对称 |
+| `Liveness.cfg` | 活性：`LiveSpec`，检查 `EventuallyStableLeader` 和 `WritesCommit`。不用对称（TLC 在对称下做活性检查不可靠），边界取更小的值 |
+| `Liveness4F.cfg` | 活性：4F1A |
+| `Coverage4F.cfg` | 4F1A 的可达性见证 |
 | `Coverage.cfg` | 可达性见证，见下文 |
 | `LiveCoverage.cfg` | 活性场景见证：一个 F、原 leader、A 分别宕机后仍能恢复服务（用 `BASE=LiveCoverage ./check-witnesses.sh` 运行） |
 | `run.sh` | 运行 TLC，使用 `../tools/tla2tools.jar` 和 `/opt/homebrew/opt/openjdk/bin/java`（可用环境变量覆盖） |
@@ -274,16 +289,20 @@ EventuallyServing == <>[](\E l \in F : Serving(l))
 | `NoUpgradeAfterDegrade` | 先 degrade 再 upgrade 的完整循环能走通 |
 | `NoReconfirmAfterDegrade` | degrade 之后换 leader，reconfirm 能完成 |
 | `NoArbPush` | A 推送配置的路径会被触发 |
-| `NoGhostTruncate` | ghost log 截断会被触发 |
+| `NoGhostTruncate` | leader 发送配置时，ghost log 截断会被触发 |
+| `NoArbGhostTruncate` | A 推送配置时，ghost log 截断会被触发（修法 3 改动的路径） |
+| `NoArbPushBesideLeader` | 有 F 处于 leader 角色时，A 仍可推送配置（不依赖 lease） |
+| `NoHalfSyncCommit` | 同步列表降到一半的 F 之后还能提交日志（4F1A 中需要连续两次 degrade） |
+| `NoCommitWithFAndArbDown` | 一个 F 和 A 同时宕机时，不需要 degrade 也能提交（4F1A 中三个 F 仍是多数派） |
 | `NoLearnerWindow` | §9 的边界状态可达：唯一的同步 F 宕机，存活的 learner 缺少已提交的日志 |
 
 ### 验收标准
 
 1. `Arbitration.cfg`：TLC 不报任何违例，在 `results.md` 里记下状态数、深度、耗时。
-2. `Liveness.cfg`：TLC 证明 `EventuallyServing` 成立。
+2. `Liveness.cfg`（以及 4F1A 的 `Liveness4F.cfg`，如果状态空间允许）：TLC 证明 `EventuallyStableLeader` 和 `WritesCommit` 成立；去掉 `DegradeLive` 或 `CommitLog` 的公平性后，检查应当失败。
 3. `Coverage.cfg`：每条见证都找到反例。
 4. 如果 `Arbitration.cfg` 或 `Liveness.cfg` 报出违例：先判断是模型写错了，还是协议真的有问题。模型错误就修模型；如果是协议问题，记录反例轨迹，交给作者判断。
 
 ### 边界
 
-安全性先用默认值（2 个 F，`MaxPid` 3，`MaxLogLen` 2，`MaxSeq` 4），把运行时间控制在几分钟以内；之后再按需要加大，或者尝试 4F1A。活性在 2F1A 下用更小的边界，例如 `MaxLogLen` 1。
+安全性：2F1A 用默认值（`MaxPid` 3，`MaxLogLen` 2，`MaxSeq` 4）；4F1A 用 `MaxPid` 3，`MaxLogLen` 1，`MaxSeq` 3。活性用更小的边界，例如 `MaxLogLen` 1。

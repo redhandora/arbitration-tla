@@ -1,0 +1,10 @@
+--- a/arbitration/Arbitration.tla
++++ b/arbitration/Arbitration.tla
+@@ -205,7 +205,6 @@
+   /\ alive[c]
+   /\ alive[v]
+   /\ v \in pq[c].mem \ {c}
+-  /\ VersionLE(meta[v].curr.ver, pq[c].ver)
+   /\ pid[v] < pid[c]
+   /\ pid'      = [pid EXCEPT ![v] = pid[c]]
+   /\ role'     = RoleAfter(v, pid[c])

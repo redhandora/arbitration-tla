@@ -1,6 +1,6 @@
 # arbitration-tla
 
-OceanBase PALF 仲裁副本（2F1A）的 TLA+ 模型：一个日志流上的选举、Phase 1（reconfirm）、Phase 2（配置变更和日志）、degrade / upgrade、仲裁副本推送配置，以及 F 和 A 的崩溃与重启。模型依据 OceanBase 源码 `src/logservice/palf`（提交 `0fa1778`）。
+OceanBase PALF 仲裁副本的 TLA+ 模型，检查了 2F1A 和 4F1A：一个日志流上的选举、Phase 1（reconfirm）、Phase 2（配置变更和日志）、degrade / upgrade、仲裁副本推送配置，以及 F 和 A 的崩溃与重启。模型依据 OceanBase 源码 `src/logservice/palf`（提交 `0fa1778`）。
 
 ## 检查了什么
 
@@ -16,8 +16,10 @@ OceanBase PALF 仲裁副本（2F1A）的 TLA+ 模型：一个日志流上的选�
 
 ```bash
 cd arbitration
-./run.sh Arbitration          # 安全性
-./run.sh Liveness             # 活性
+./run.sh Arbitration          # 2F1A 安全性
+./run.sh Arbitration4F        # 4F1A 安全性（约 6 小时）
+./run.sh Liveness             # 2F1A 活性
+./run.sh Liveness4F           # 4F1A 活性
 ./check-witnesses.sh          # 可达性见证，每条都应输出 REACHED
 BASE=LiveCoverage ./check-witnesses.sh NoServingAfterFCrash \
   NoServingAfterLeaderCrash NoServingAfterArbCrash

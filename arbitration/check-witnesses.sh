@@ -7,7 +7,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 ALL="NoReconfirm NoLeader NoArbPush NoCommittedEntry NoDegradeCommitted \
-NoUpgradeAfterDegrade NoReconfirmAfterDegrade NoGhostTruncate NoLearnerWindow"
+NoUpgradeAfterDegrade NoReconfirmAfterDegrade NoGhostTruncate NoArbGhostTruncate \
+NoArbPushBesideLeader NoArbCatchUp NoLearnerWindow"
 WITNESSES="${*:-$ALL}"
 mkdir -p out
 rc=0

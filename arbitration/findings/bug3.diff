@@ -1,0 +1,26 @@
+--- a/arbitration/Arbitration.tla
++++ b/arbitration/Arbitration.tla
+@@ -474,7 +474,6 @@
+   \/ \E l \in F, v \in Server       : SendMeta(v, l)
+   \/ \E l \in F                     : CommitConfig(l)
+   \/ \E f \in F                     : ArbPush(f)
+-  \/ \E f \in F                     : ArbCatchUpPid(f)
+   \/ \E l \in F                     : Write(l)
+   \/ \E f, l \in F                  : Replicate(f, l)
+   \/ \E l \in F, i \in 1..MaxLogLen : CommitLog(l, i)
+@@ -626,7 +625,6 @@
+   \/ \E l \in F, v \in Server       : SendMeta(v, l)
+   \/ \E l \in F                     : CommitConfig(l)
+   \/ \E f \in F                     : ArbPushLive(f)
+-  \/ \E f \in F                     : ArbCatchUpLive(f)
+   \/ \E l \in F                     : Write(l)
+   \/ \E f, l \in F                  : Replicate(f, l)
+   \/ \E l \in F, i \in 1..MaxLogLen : CommitLog(l, i)
+@@ -642,7 +640,6 @@
+   /\ \A l \in F, v \in Server       : WF_vars(SendMeta(v, l))
+   /\ \A l \in F                     : WF_vars(CommitConfig(l))
+   /\ \A f \in F                     : WF_vars(ArbPushLive(f))
+-  /\ \A f \in F                     : WF_vars(ArbCatchUpLive(f))
+   /\ \A f, l \in F                  : WF_vars(Replicate(f, l))
+   /\ \A l \in F, i \in 1..MaxLogLen : WF_vars(CommitLog(l, i))
+ 
