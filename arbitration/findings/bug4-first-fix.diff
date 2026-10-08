@@ -1,0 +1,19 @@
+--- a/arbitration/Arbitration.tla
++++ b/arbitration/Arbitration.tla
+@@ -358,7 +358,6 @@
+ Degrade(l, s) ==
+   /\ role[l] \in {"Reconfirming", "Leader"}
+   /\ CanPropose(l)
+-  /\ ConfigConfirmed(l)
+   /\ CanDegrade(l, s)
+   /\ ProposeConfig(l, config[l].curr.commitGroup \ {s}, "Degrade")
+ 
+@@ -409,6 +408,8 @@
+   /\ alive[l]
+   /\ pendingChange[l] # None
+   /\ IsMajority(pendingChange[l].acks, ElectionGroup(l))
++  /\ (pendingChange[l].kind = "Degrade" /\ role[l] = "Reconfirming")
++        => IsMajority(pendingChange[l].acks, config[l].prev.commitGroup \cup {A})
+   /\ pendingChange' = [pendingChange EXCEPT ![l] = None]
+   /\ IF pendingChange[l].kind = "StartWorking"
+        THEN /\ role'        = [role EXCEPT ![l] = "Leader"]

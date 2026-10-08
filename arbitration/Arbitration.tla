@@ -1,28 +1,37 @@
 ---------------------------- MODULE Arbitration ----------------------------
 (***************************************************************************)
-(* PALF with an arbitration replica (2F1A), one log stream.                *)
+(* Dual-quorum Paxos: PALF with an arbitration replica A, one log stream. *)
 (*                                                                         *)
 (* Grounded in OceanBase src/logservice/palf (github.com/oceanbase/        *)
-(* oceanbase, commit 0fa1778).  Names in comments refer to that code.      *)
+(* oceanbase, commit 0fa1778); code names appear in parentheses.  Terms    *)
+(* follow the paper (Section 5):                                           *)
 (*                                                                         *)
-(*  - Election members and the prepare quorum are the log-sync list plus   *)
-(*    the arbitration replica A (convert_to_complete_config).  Learners    *)
-(*    do not vote.                                                         *)
-(*  - Log entries commit on a majority of the log-sync list only; A holds  *)
-(*    no log and never counts.                                             *)
-(*  - The member config is LogConfigMeta in meta storage, not a log entry; *)
-(*    it is tied to the log only through its barrier.                      *)
-(*  - Election does not compare logs; Phase 1 (reconfirm) recovers them.   *)
+(*  - The log commit member group S of a configuration is the set of full  *)
+(*    replicas that accept and commit log entries (log_sync_memberlist).   *)
+(*    Its election member group is E = S \cup {A}                          *)
+(*    (convert_to_complete_config).  Degraded full replicas are learners   *)
+(*    and do not vote.                                                     *)
+(*  - A prepare quorum is a majority of E: elections and the Prepare phase *)
+(*    use it.  An accept quorum is a majority of S: log entries commit on  *)
+(*    it.  A stores no log and never counts toward an accept quorum.       *)
+(*  - Each leader is identified by a proposal number (proposal_id).  A new *)
+(*    leader runs log reconfirmation: the Prepare phase, log recovery from *)
+(*    the replica with the largest (acc, LSN), and the StartWorking log.   *)
+(*    The election itself does not compare logs.                           *)
+(*  - A configuration is metadata (LogConfigMeta), not a log entry.  It    *)
+(*    has a version (proposal number, sequence number) and a barrier, and  *)
+(*    commits once a majority of the new configuration's E persists it.    *)
 (***************************************************************************)
 EXTENDS Naturals, Sequences, FiniteSets, TLC
 
 CONSTANTS
-  F,          \* full (data) replicas
-  A,          \* the arbitration replica
-  None,       \* model value: no config change in flight
-  MaxPid,     \* bound on proposal_id
-  MaxLogLen,  \* bound on log length
-  MaxSeq      \* bound on config_seq, i.e. on the number of config changes
+  F,             \* full replicas
+  A,             \* the arbitration replica
+  None,          \* model value: no configuration change in flight
+  MaxProposal,   \* bound on proposal numbers
+  MaxLogLen,     \* bound on the log length (LSN)
+  MaxConfigSeq   \* bound on configuration sequence numbers, i.e. on the
+                 \* number of configuration changes
 
 ASSUME A \notin F
 
@@ -30,22 +39,29 @@ Server == F \cup {A}
 
 VARIABLES
   \* persistent: survive a crash
-  pid,        \* [Server -> Nat]  proposal_id in the prepare meta
-  log,        \* [F -> Seq(Nat)]  entry = pid of the leader that wrote it
-  meta,       \* [Server -> Meta] LogConfigMeta: prev/curr config + barrier
+  proposal,      \* [Server -> Nat]  largest proposal number promised; for
+                 \*   a leader, its own proposal number
+  log,           \* [F -> Seq(Nat)]  each entry is the proposal number of
+                 \*   the leader that wrote it
+  config,        \* [Server -> [prev, curr, barrier]]  configuration metadata
   \* volatile: lost on a crash
-  alive,      \* [Server -> BOOLEAN]
-  role,       \* [F -> {"Follower", "Prepare", "Reconfirm", "Leader"}]
-  promises,   \* [F -> SUBSET Server]  prepare_log_ack_list_, incl. self
-  pq,         \* [F -> [mem, ver]]  prepare member list and config version,
-                \*                    both fixed at Elect
-                \*                       (curr_paxos_follower_list_ + self)
-  cc,         \* [F -> None or [kind, acks]]  in-flight config change
-  commitIdx,  \* [F -> Nat]  committed_end_lsn
+  alive,         \* [Server -> BOOLEAN]
+  role,          \* [F -> {"Follower", "Candidate", "Reconfirming", "Leader"}]
+  promisedBy,    \* [F -> SUBSET Server]  replicas that promised the
+                 \*   candidate's proposal number, incl. itself
+                 \*   (prepare_log_ack_list_)
+  prepareConfig, \* [F -> [members, version]]  the E and configuration
+                 \*   version the candidate runs the Prepare phase with,
+                 \*   fixed when it starts (curr_paxos_follower_list_)
+  pendingChange, \* [F -> None or [kind, acks]]  configuration change in flight
+  commitIndex,   \* [F -> Nat]  commit point (committed_end_lsn)
+  matchIndex,    \* [F -> [F -> Nat]]  for leader l, the end of l's log that
+                 \*   each replica has acknowledged to l (match_lsn_map_)
   \* history, only read by the invariants
-  committed   \* SUBSET [idx, pid]
+  committed      \* SUBSET [index, proposal]  committed entries
 
-vars == <<pid, log, meta, alive, role, promises, pq, cc, commitIdx, committed>>
+vars == <<proposal, log, config, alive, role, promisedBy, prepareConfig,
+          pendingChange, commitIndex, matchIndex, committed>>
 
 -----------------------------------------------------------------------------
 (* Helpers *)
@@ -56,605 +72,749 @@ SetMax(S) == CHOOSE x \in S : \A y \in S : y <= x
 
 IsMajority(S, T) == Cardinality(S \cap T) * 2 > Cardinality(T)
 
-\* convert_to_complete_config: log_sync_memberlist + arbitration_member.
-ElectionMembers(s) == meta[s].curr.sync \cup {A}
+\* The election member group E of s's current configuration.
+ElectionGroup(s) == config[s].curr.commitGroup \cup {A}
 
-LastLogPid(lg) == IF lg = << >> THEN 0 ELSE lg[Len(lg)]
+LastEntryProposal(lg) == IF lg = << >> THEN 0 ELSE lg[Len(lg)]
 
-\* The proposal_id a replica reports in its prepare response: the larger of
-\* its last log's pid and its config meta's pid (submit_prepare_log_, which
-\* explains why: otherwise ghost logs could be recovered).
-AcceptedPid(f) == Max(LastLogPid(log[f]), meta[f].curr.ver[1])
+\* acc: the proposal number a replica reports in the Prepare phase, the
+\* larger of its last entry's and its configuration's (submit_prepare_log_).
+\* The configuration part ranks a replica that accepted a configuration
+\* above replicas that hold older, conflicting entries.
+Acc(f) == Max(LastEntryProposal(log[f]), config[f].curr.version[1])
 
-\* LogConfigVersion = (proposal_id, config_seq), compared lexicographically.
+\* Configuration versions (proposal number, sequence number) compare
+\* lexicographically (LogConfigVersion).
 VersionLT(v1, v2) == \/ v1[1] < v2[1]
                      \/ v1[1] = v2[1] /\ v1[2] < v2[2]
 VersionLE(v1, v2) == VersionLT(v1, v2) \/ v1 = v2
 
 IsPrefix(a, b) == Len(a) <= Len(b) /\ SubSeq(b, 1, Len(a)) = a
 
-LogCaughtUp(f, lg) == IsPrefix(lg, log[f])
-
-\* pre_check_for_config_log: the receiver's log matches at the barrier.
+\* f's log matches that of configuration m's leader up to m's barrier, so f
+\* may accept m (pre_check_for_config_log).
 \* (IF, not \/: inside an action TLC evaluates every disjunct.)
-PassesBarrier(f, m) ==
-  IF m.barrier.idx = 0
+MatchesBarrier(f, m) ==
+  IF m.barrier.index = 0
   THEN TRUE
-  ELSE /\ Len(log[f]) >= m.barrier.idx
-       /\ log[f][m.barrier.idx] = m.barrier.pid
+  ELSE /\ Len(log[f]) >= m.barrier.index
+       /\ log[f][m.barrier.index] = m.barrier.proposal
 
-\* pre_check_for_config_log: once the barrier matches, if the next log has a
-\* smaller pid than the meta's own proposal_id, everything after the barrier
-\* is a ghost log and is truncated.
+\* On accepting configuration m, f discards stale entries: if the entry
+\* after the barrier has a proposal number below the configuration's own,
+\* everything after the barrier is truncated (pre_check_for_config_log).
+\* This keeps acc faithful to the log.
 \*
 \* FIX (see findings.md, finding 2): the code compares with the message's
-\* proposal_id.  That equals the meta's proposal_id when a leader sends its
-\* own meta, but not when A (sync_meta_for_arb_election_leader) forwards an
-\* older meta with its current, larger proposal_id; then committed logs that
-\* the meta's leader wrote after the barrier were truncated.  The model
-\* compares with the meta's proposal_id (meta.proposal_id_ ==
-\* curr.ver[1]), which leaves the leader's own path unchanged.
-LogAfterMeta(f, m) ==
-  IF Len(log[f]) > m.barrier.idx /\ log[f][m.barrier.idx + 1] < m.curr.ver[1]
-  THEN SubSeq(log[f], 1, m.barrier.idx)
+\* proposal number.  That equals the configuration's own when a leader
+\* sends its configuration, but not when A forwards an older configuration
+\* with its current, larger proposal number
+\* (sync_meta_for_arb_election_leader); then committed entries that the
+\* configuration's leader wrote after the barrier were truncated.  The
+\* model compares with the configuration's own proposal number
+\* (config.proposal_id_ = curr.version[1]), which leaves the leader's own
+\* path unchanged.
+TruncateStaleEntries(f, m) ==
+  IF Len(log[f]) > m.barrier.index /\ log[f][m.barrier.index + 1] < m.curr.version[1]
+  THEN SubSeq(log[f], 1, m.barrier.index)
   ELSE log[f]
 
-\* Q could elect c: c is in Q, Q is a majority of c's election members, and
-\* no voter has a newer membership version (ElectionAcceptor::
-\* on_prepare_request ignores requests with a lower membership_version).
-ElectableBy(c, Q) ==
+\* Q is a prepare quorum that can elect c: c is in Q, Q is a majority of
+\* c's E, and no voter holds a newer configuration version
+\* (ElectionAcceptor::on_prepare_request ignores a lower
+\* membership_version).
+IsPrepareQuorum(Q, c) ==
   /\ c \in Q
-  /\ Q \subseteq ElectionMembers(c)
-  /\ IsMajority(Q, ElectionMembers(c))
-  /\ \A v \in Q : VersionLE(meta[v].curr.ver, meta[c].curr.ver)
+  /\ Q \subseteq ElectionGroup(c)
+  /\ IsMajority(Q, ElectionGroup(c))
+  /\ \A v \in Q : VersionLE(config[v].curr.version, config[c].curr.version)
 
 CanBeElected(c) ==
-  \E Q \in SUBSET ElectionMembers(c) :
-     ElectableBy(c, Q) /\ \A v \in Q : alive[v]
+  \E Q \in SUBSET ElectionGroup(c) :
+     IsPrepareQuorum(Q, c) /\ \A v \in Q : alive[v]
 
-\* The F replicas in Q with the largest (AcceptedPid, log length): Phase 1
-\* fetches the log from one of them.  A is never a log source.
-MaxLogServers(Q) ==
+\* The full replicas in Q with the largest (acc, LSN): log recovery fetches
+\* from one of them.  A is never a source.
+RecoverySources(Q) ==
   { m \in Q \cap F :
       \A f \in Q \cap F :
-         \/ AcceptedPid(f) < AcceptedPid(m)
-         \/ AcceptedPid(f) = AcceptedPid(m) /\ Len(log[f]) <= Len(log[m]) }
+         \/ Acc(f) < Acc(m)
+         \/ Acc(f) = Acc(m) /\ Len(log[f]) <= Len(log[m]) }
 
-\* The meta a leader proposes: version (its pid, seq + 1) and a barrier at
-\* the end of its log (append_config_meta_, renew_config_change_barrier_).
-NextMeta(l, sync) ==
-  [prev    |-> meta[l].curr,
-   curr    |-> [ver |-> <<pid[l], meta[l].curr.ver[2] + 1>>, sync |-> sync],
-   barrier |-> [idx |-> Len(log[l]), pid |-> LastLogPid(log[l])]]
+\* The configuration leader l proposes with log commit member group S:
+\* version (l's proposal number, sequence number + 1) and a barrier at the
+\* end of l's log (append_config_meta_, renew_config_change_barrier_).
+NextConfig(l, S) ==
+  [prev    |-> config[l].curr,
+   curr    |-> [version     |-> <<proposal[l], config[l].curr.version[2] + 1>>,
+                commitGroup |-> S],
+   barrier |-> [index |-> Len(log[l]), proposal |-> LastEntryProposal(log[l])]]
 
-\* A majority of S already holds the leader's log (wait_log_barrier_,
+\* No acknowledgments yet (see matchIndex).
+NoAcks == [f \in F |-> 0]
+
+\* Leader l knows that f holds l's log up to position i: f acknowledged it
+\* (match_lsn_map_).  l counts itself.  l decides only on acknowledgments,
+\* never on the replicas' current logs: a replica may hold the same
+\* entries without having accepted them from l, e.g. through its own log
+\* recovery under a larger proposal number.
+Acked(l, f, i) == f = l \/ matchIndex[l][f] >= i
+
+\* Pre-change synchronization: a majority of S has acknowledged the
+\* leader's whole log, up to what becomes the barrier (wait_log_barrier_,
 \* check_follower_sync_status_, is_accept_quorum_catch_up_).
-MajorityCaughtUp(l, S) == IsMajority({f \in S : LogCaughtUp(f, log[l])}, S)
+MajorityHoldsLeaderLog(l, S) == IsMajority({f \in S : Acked(l, f, Len(log[l]))}, S)
 
-Entries(lg, n) == { [idx |-> j, pid |-> lg[j]] : j \in 1..n }
+Entries(lg, n) == { [index |-> j, proposal |-> lg[j]] : j \in 1..n }
 
-Has(lg, e) == Len(lg) >= e.idx /\ lg[e.idx] = e.pid
+HoldsEntry(lg, e) == Len(lg) >= e.index /\ lg[e.index] = e.proposal
 
-\* No prepare round in progress (see pq).
-NoPrepare == [mem |-> {}, ver |-> <<0, 0>>]
+\* No Prepare phase in progress (see prepareConfig).
+NoPrepareConfig == [members |-> {}, version |-> <<0, 0>>]
 
-\* A replica that learns a larger proposal_id leaves any leader role
-\* (LogStateMgr::handle_prepare_request).
-Demoted(v, p) == v \in F /\ role[v] # "Follower" /\ pid[v] < p
+\* A replica that learns a larger proposal number steps down from any
+\* leader role (LogStateMgr::handle_prepare_request).
+StepsDown(v, p) == v \in F /\ role[v] # "Follower" /\ proposal[v] < p
 
-RoleAfter(v, p)     == [x \in F |-> IF x = v /\ Demoted(v, p) THEN "Follower" ELSE role[x]]
-PromisesAfter(v, p) == [x \in F |-> IF x = v /\ Demoted(v, p) THEN {} ELSE promises[x]]
-CcAfter(v, p)       == [x \in F |-> IF x = v /\ Demoted(v, p) THEN None ELSE cc[x]]
-PqAfter(v, p)       == [x \in F |-> IF x = v /\ Demoted(v, p) THEN NoPrepare ELSE pq[x]]
+\* The volatile state of v after it learns proposal number p.
+IfStepsDown(v, p, var, reset) ==
+  [x \in F |-> IF x = v /\ StepsDown(v, p) THEN reset ELSE var[x]]
 
-\* try_update_proposal_id_ + can_receive_config_log.  A skips the barrier.
-CanReceiveMeta(v, m, p) ==
+RoleAfter(v, p)          == IfStepsDown(v, p, role, "Follower")
+PromisedByAfter(v, p)    == IfStepsDown(v, p, promisedBy, {})
+PrepareConfigAfter(v, p) == IfStepsDown(v, p, prepareConfig, NoPrepareConfig)
+PendingChangeAfter(v, p) == IfStepsDown(v, p, pendingChange, None)
+MatchIndexAfter(v, p)    == IfStepsDown(v, p, matchIndex, NoAcks)
+
+\* v may accept configuration m sent with proposal number p
+\* (try_update_proposal_id_, can_receive_config_log).  A has no log and
+\* skips the barrier check.
+ConfigAcceptable(v, m, p) ==
   /\ alive[v]
-  /\ pid[v] <= p
-  /\ VersionLE(meta[v].curr.ver, m.curr.ver)
-  /\ v \in F => PassesBarrier(v, m)
+  /\ proposal[v] <= p
+  /\ VersionLE(config[v].curr.version, m.curr.version)
+  /\ v \in F => MatchesBarrier(v, m)
 
 -----------------------------------------------------------------------------
 (* Initial state *)
 
-InitCfg  == [ver |-> <<0, 0>>, sync |-> F]
-InitMeta == [prev |-> InitCfg, curr |-> InitCfg, barrier |-> [idx |-> 0, pid |-> 0]]
+InitialConfig     == [version |-> <<0, 0>>, commitGroup |-> F]
+InitialConfigMeta == [prev    |-> InitialConfig,
+                      curr    |-> InitialConfig,
+                      barrier |-> [index |-> 0, proposal |-> 0]]
 
 Init ==
-  /\ pid       = [s \in Server |-> 0]
-  /\ log       = [f \in F |-> << >>]
-  /\ meta      = [s \in Server |-> InitMeta]
-  /\ alive     = [s \in Server |-> TRUE]
-  /\ role      = [f \in F |-> "Follower"]
-  /\ promises  = [f \in F |-> {}]
-  /\ pq        = [f \in F |-> NoPrepare]
-  /\ cc        = [f \in F |-> None]
-  /\ commitIdx = [f \in F |-> 0]
-  /\ committed = {}
+  /\ proposal      = [s \in Server |-> 0]
+  /\ log           = [f \in F |-> << >>]
+  /\ config        = [s \in Server |-> InitialConfigMeta]
+  /\ alive         = [s \in Server |-> TRUE]
+  /\ role          = [f \in F |-> "Follower"]
+  /\ promisedBy    = [f \in F |-> {}]
+  /\ prepareConfig = [f \in F |-> NoPrepareConfig]
+  /\ pendingChange = [f \in F |-> None]
+  /\ commitIndex   = [f \in F |-> 0]
+  /\ matchIndex    = [l \in F |-> NoAcks]
+  /\ committed     = {}
 
 -----------------------------------------------------------------------------
-(* Election and Phase 1 (reconfirm, log_reconfirm.cpp) *)
+(* Log reconfirmation (log_reconfirm.cpp): election, Prepare phase and log *)
+(* recovery.                                                               *)
 
-\* The election (palf/election) picks c without comparing logs; c then
-\* starts Phase 1 with a larger proposal_id (LogReconfirm::
-\* submit_prepare_log_).  The election lease is not modelled, so several
-\* election leaders may coexist; safety must rest on proposal_id alone.
-Elect(c, b) ==
+\* c has won the election (palf/election, which does not compare logs) and
+\* starts the Prepare phase with a larger proposal number p
+\* (LogReconfirm::submit_prepare_log_).  The election lease is not
+\* modelled, so several election leaders may coexist; safety rests on
+\* proposal numbers alone.
+Prepare(c, p) ==
   /\ alive[c]
-  /\ role[c] \in {"Follower", "Prepare"}
-  /\ c \in meta[c].curr.sync     \* ElectionProposer gives up if not a member
+  /\ role[c] \in {"Follower", "Candidate"}
+  /\ c \in config[c].curr.commitGroup   \* learners do not campaign (ElectionProposer)
   /\ CanBeElected(c)
-  /\ pid[c] < b
-  /\ pid'      = [pid EXCEPT ![c] = b]
-  /\ role'     = [role EXCEPT ![c] = "Prepare"]
-  /\ promises' = [promises EXCEPT ![c] = {c}]
-  /\ pq'       = [pq EXCEPT ![c] =          \* init_reconfirm_
-                    [mem |-> ElectionMembers(c), ver |-> meta[c].curr.ver]]
-  /\ cc'       = [cc EXCEPT ![c] = None]
-  /\ UNCHANGED <<log, meta, alive, commitIdx, committed>>
+  /\ proposal[c] < p
+  /\ proposal'      = [proposal EXCEPT ![c] = p]
+  /\ role'          = [role EXCEPT ![c] = "Candidate"]
+  /\ promisedBy'    = [promisedBy EXCEPT ![c] = {c}]
+  /\ prepareConfig' = [prepareConfig EXCEPT ![c] =           \* init_reconfirm_
+                         [members |-> ElectionGroup(c),
+                          version |-> config[c].curr.version]]
+  /\ pendingChange' = [pendingChange EXCEPT ![c] = None]
+  /\ UNCHANGED <<log, config, alive, commitIndex, matchIndex, committed>>
 
-\* v promises c's proposal_id (LogStateMgr::handle_prepare_request).  c runs
-\* prepare only while it holds the election, and v backs c's election only
-\* if c's membership version is not lower than its own (ElectionAcceptor
-\* ignores lower membership_version), so v filters by config version here.
-\* The version is the one c ran the election with (fixed at Elect, like the
-\* member list): a config c accepts later, mid-prepare, from another leader
-\* at the same proposal_id does not make its election newer.
+\* v promises c's proposal number (LogStateMgr::handle_prepare_request).
+\* c runs the Prepare phase only while it holds the election, and v backs c
+\* only if c's configuration version is not lower than its own
+\* (ElectionAcceptor ignores a lower membership_version), so v filters by
+\* configuration version here.  The version is the one c campaigned with,
+\* fixed when the Prepare phase starts, like E: a configuration that c
+\* accepts later from another leader with the same proposal number does
+\* not make its campaign newer.
 Promise(v, c) ==
-  /\ role[c] = "Prepare"
+  /\ role[c] = "Candidate"
   /\ alive[c]
   /\ alive[v]
-  /\ v \in pq[c].mem \ {c}
-  /\ VersionLE(meta[v].curr.ver, pq[c].ver)
-  /\ pid[v] < pid[c]
-  /\ pid'      = [pid EXCEPT ![v] = pid[c]]
-  /\ role'     = RoleAfter(v, pid[c])
-  /\ promises' = [x \in F |-> IF x = c THEN promises[c] \cup {v}
-                              ELSE IF x = v /\ Demoted(v, pid[c]) THEN {}
-                              ELSE promises[x]]
-  /\ pq'       = PqAfter(v, pid[c])
-  /\ cc'       = CcAfter(v, pid[c])
-  /\ UNCHANGED <<log, meta, alive, commitIdx, committed>>
+  /\ v \in prepareConfig[c].members \ {c}
+  /\ VersionLE(config[v].curr.version, prepareConfig[c].version)
+  /\ proposal[v] < proposal[c]
+  /\ proposal'      = [proposal EXCEPT ![v] = proposal[c]]
+  /\ role'          = RoleAfter(v, proposal[c])
+  /\ promisedBy'    = [x \in F |-> IF x = c THEN promisedBy[c] \cup {v}
+                                   ELSE IF x = v /\ StepsDown(v, proposal[c]) THEN {}
+                                   ELSE promisedBy[x]]
+  /\ prepareConfig' = PrepareConfigAfter(v, proposal[c])
+  /\ pendingChange' = PendingChangeAfter(v, proposal[c])
+  /\ matchIndex'    = MatchIndexAfter(v, proposal[c])
+  /\ UNCHANGED <<log, config, alive, commitIndex, committed>>
 
-\* With a prepare quorum of the member list fixed at Elect (prepare_quorum_cnt_
-\* is computed once in init_reconfirm_), fetch the log of a replica with the
-\* largest (AcceptedPid, length) (FETCH_MAX_LOG_LSN, RECONFIRM_FETCH_LOG).
-Fetch(c) ==
-  /\ role[c] = "Prepare"
+\* Once a prepare quorum of the E fixed at the start has promised
+\* (prepare_quorum_cnt_ is computed once in init_reconfirm_), c fetches the
+\* log of a full replica with the largest (acc, LSN) among them
+\* (FETCH_MAX_LOG_LSN, RECONFIRM_FETCH_LOG).  c is now the leader of its
+\* proposal number, still in log reconfirmation.
+RecoverLog(c) ==
+  /\ role[c] = "Candidate"
   /\ alive[c]
-  /\ IsMajority(promises[c], pq[c].mem)
-  /\ \E m \in MaxLogServers(promises[c]) :
+  /\ IsMajority(promisedBy[c], prepareConfig[c].members)
+  /\ \E m \in RecoverySources(promisedBy[c]) :
         /\ alive[m]
         /\ log' = [log EXCEPT ![c] = log[m]]
-  /\ role' = [role EXCEPT ![c] = "Reconfirm"]
-  /\ pq'   = [pq EXCEPT ![c] = NoPrepare]
-  /\ UNCHANGED <<pid, meta, alive, promises, cc, commitIdx, committed>>
+  /\ role'          = [role EXCEPT ![c] = "Reconfirming"]
+  /\ prepareConfig' = [prepareConfig EXCEPT ![c] = NoPrepareConfig]
+  /\ matchIndex'    = [matchIndex EXCEPT ![c] = NoAcks]
+  /\ UNCHANGED <<proposal, config, alive, promisedBy, pendingChange, commitIndex,
+                 committed>>
 
 -----------------------------------------------------------------------------
-(* Phase 2: config changes (log_config_mgr.cpp).  The config is a        *)
-(* LogConfigMeta in meta storage; it commits on a majority of the NEW    *)
-(* election members (log-sync list + A).                                 *)
+(* Configuration changes (log_config_mgr.cpp).  A configuration commits    *)
+(* once a majority of the NEW configuration's E has persisted it.          *)
 
-\* The leader rewrites its own meta first, then sends it
-\* (append_config_meta_).
-ProposeConfig(l, sync, kind) ==
-  /\ meta' = [meta EXCEPT ![l] = NextMeta(l, sync)]
-  /\ cc'   = [cc EXCEPT ![l] = [kind |-> kind, acks |-> {l}]]
-  /\ UNCHANGED <<pid, log, alive, role, promises, pq, commitIdx, committed>>
+\* The leader first writes the configuration to its own metadata, then
+\* sends it (append_config_meta_).
+ProposeConfig(l, S, kind) ==
+  /\ config'        = [config EXCEPT ![l] = NextConfig(l, S)]
+  /\ pendingChange' = [pendingChange EXCEPT ![l] = [kind |-> kind, acks |-> {l}]]
+  /\ UNCHANGED <<proposal, log, alive, role, promisedBy, prepareConfig, commitIndex,
+                 matchIndex, committed>>
 
 CanPropose(l) ==
   /\ alive[l]
-  /\ cc[l] = None
-  /\ meta[l].curr.ver[2] < MaxSeq
+  /\ pendingChange[l] = None
+  /\ config[l].curr.version[2] < MaxConfigSeq
 
-\* START_WORKING (confirm_start_working_log): re-commit the current member
-\* list at the new proposal_id once a majority of the log-sync list holds
-\* the recovered log (is_accept_quorum_catch_up_).
+\* The StartWorking log (confirm_start_working_log): once an accept quorum
+\* of S holds the recovered log (is_accept_quorum_catch_up_), the new
+\* leader re-proposes its configuration under its own proposal number.  Its
+\* commit ends log reconfirmation and commits the recovered log up to the
+\* barrier.
 StartWorking(l) ==
-  /\ role[l] = "Reconfirm"
+  /\ role[l] = "Reconfirming"
   /\ CanPropose(l)
-  /\ MajorityCaughtUp(l, meta[l].curr.sync)
-  /\ ProposeConfig(l, meta[l].curr.sync, "StartWorking")
+  /\ MajorityHoldsLeaderLog(l, config[l].curr.commitGroup)
+  /\ ProposeConfig(l, config[l].curr.commitGroup, "StartWorking")
 
-\* Turn one log-sync member s into a learner.  The arbitration service
-\* degrades half of F, but degrade_acceptor_to_learner runs one config change
-\* per member (one_stage_config_change_), so consecutive configs differ by one
-\* member; the log-sync list never drops below half of F.  Allowed in
-\* reconfirm once the log is fetched (can_do_degrade).  s may be alive:
-\* failure detection can be wrong.
+\* Degrade: turn member s of S into a learner
+\* (degrade_acceptor_to_learner).  The arbitration service degrades half of
+\* F, one member per change (one_stage_config_change_), so consecutive
+\* configurations differ by one member and S never drops below half of F.
+\* Pre-change synchronization: a majority of the new S already holds the
+\* leader's log.  s may be alive: failure detection can be wrong.
+CanDegrade(l, s) ==
+  /\ s \in config[l].curr.commitGroup \ {l}
+  /\ Cardinality(config[l].curr.commitGroup \ {s}) * 2 >= Cardinality(F)
+  /\ MajorityHoldsLeaderLog(l, config[l].curr.commitGroup \ {s})
+
+\* FIX (see findings.md, finding 4): configuration confirmation.  Before
+\* degrading during log reconfirmation, a new leader re-proposes the
+\* configuration it inherited under its own proposal number and waits for
+\* it to commit on a majority of E, but not for the log as StartWorking
+\* does.  The inherited configuration may be an unfinished change of an
+\* earlier leader; once a majority of E holds it under the new proposal
+\* number, no older configuration, and no change another leader proposed
+\* under a smaller proposal number, can gather a prepare quorum (Lemma 2).
+\* The code degrades right after log recovery (can_do_degrade); in 4F1A
+\* two degrades by two leaders then leave two configurations that can
+\* both elect but whose prepare quorums are disjoint.
+\*
+\* The leader confirms only when it is about to degrade a member.  A may
+\* then hold the confirmation before that member has the leader's log; if
+\* the leader fails before the degrade commits, the remaining replicas
+\* wait for it, as they would right after the degrade (the single-copy
+\* window, see NoLearnerWindow).
+ConfirmConfig(l) ==
+  /\ role[l] = "Reconfirming"
+  /\ CanPropose(l)
+  /\ config[l].curr.version[1] < proposal[l]
+  /\ \E s \in F : CanDegrade(l, s)
+  /\ ProposeConfig(l, config[l].curr.commitGroup, "Confirm")
+
+\* l's configuration has the proposal number of l itself: l proposed it.
+\* Together with CanPropose (nothing in flight) it has committed, through
+\* configuration confirmation, the StartWorking log, or an earlier change
+\* of l.  A crash or a larger proposal number ends l's role.
+ConfigConfirmed(l) == config[l].curr.version[1] = proposal[l]
+
+\* Degrade s.  Allowed during log reconfirmation once the log is recovered
+\* (can_do_degrade), and, with the fix, once the configuration is
+\* confirmed.
 Degrade(l, s) ==
-  /\ role[l] \in {"Reconfirm", "Leader"}
+  /\ role[l] \in {"Reconfirming", "Leader"}
   /\ CanPropose(l)
-  /\ s \in meta[l].curr.sync \ {l}
-  /\ Cardinality(meta[l].curr.sync \ {s}) * 2 >= Cardinality(F)
-  /\ MajorityCaughtUp(l, meta[l].curr.sync \ {s})
-  /\ ProposeConfig(l, meta[l].curr.sync \ {s}, "Degrade")
+  /\ ConfigConfirmed(l)
+  /\ CanDegrade(l, s)
+  /\ ProposeConfig(l, config[l].curr.commitGroup \ {s}, "Degrade")
 
-\* Turn a learner whose log equals the leader's back into a log-sync
-\* member (upgrade_learner_to_acceptor).
+\* Upgrade: turn a learner m that has acknowledged the leader's whole log
+\* back into a member of S (upgrade_learner_to_acceptor).
 Upgrade(l, m) ==
   /\ role[l] = "Leader"
   /\ CanPropose(l)
-  /\ m \in F \ meta[l].curr.sync
+  /\ m \in F \ config[l].curr.commitGroup
   /\ alive[m]
-  /\ log[m] = log[l]
-  /\ MajorityCaughtUp(l, meta[l].curr.sync \cup {m})
-  /\ ProposeConfig(l, meta[l].curr.sync \cup {m}, "Upgrade")
+  /\ Acked(l, m, Len(log[l]))
+  /\ MajorityHoldsLeaderLog(l, config[l].curr.commitGroup \cup {m})
+  /\ ProposeConfig(l, config[l].curr.commitGroup \cup {m}, "Upgrade")
 
-\* Leader l sends its meta to v (submit_config_log_ / receive_config_log):
-\* either the in-flight change, or a resend of the current config to a
-\* replica that is behind.  Learners receive it too, but only the new
-\* members' acks count.
-SendMeta(v, l) ==
+\* v accepts leader l's configuration (submit_config_log_ /
+\* receive_config_log): either the change in flight, or a resend of the
+\* current configuration to a replica that is behind.  Learners receive it
+\* too, but only acknowledgments from the new E count.
+AcceptConfig(v, l) ==
   /\ l \in F
   /\ alive[l]
   /\ v # l
-  /\ \/ cc[l] # None /\ v \notin cc[l].acks
+  /\ \/ pendingChange[l] # None /\ v \notin pendingChange[l].acks
      \/ /\ role[l] = "Leader"
-        /\ cc[l] = None
-        /\ VersionLT(meta[v].curr.ver, meta[l].curr.ver)
-  /\ CanReceiveMeta(v, meta[l], pid[l])
-  /\ pid'      = [pid EXCEPT ![v] = pid[l]]
-  /\ meta'     = [meta EXCEPT ![v] = meta[l]]
-  /\ log'      = IF v \in F
-                   THEN [log EXCEPT ![v] = LogAfterMeta(v, meta[l])]
-                   ELSE log
-  /\ role'     = RoleAfter(v, pid[l])
-  /\ promises' = PromisesAfter(v, pid[l])
-  /\ pq'       = PqAfter(v, pid[l])
-  /\ cc'       = [x \in F |-> IF x = l /\ cc[l] # None
-                                THEN [cc[l] EXCEPT !.acks = @ \cup {v}]
-                              ELSE IF x = v /\ Demoted(v, pid[l]) THEN None
-                              ELSE cc[x]]
-  /\ UNCHANGED <<alive, commitIdx, committed>>
+        /\ pendingChange[l] = None
+        /\ VersionLT(config[v].curr.version, config[l].curr.version)
+  /\ ConfigAcceptable(v, config[l], proposal[l])
+  /\ proposal'      = [proposal EXCEPT ![v] = proposal[l]]
+  /\ config'        = [config EXCEPT ![v] = config[l]]
+  /\ log'           = IF v \in F
+                        THEN [log EXCEPT ![v] = TruncateStaleEntries(v, config[l])]
+                        ELSE log
+  /\ role'          = RoleAfter(v, proposal[l])
+  /\ promisedBy'    = PromisedByAfter(v, proposal[l])
+  /\ prepareConfig' = PrepareConfigAfter(v, proposal[l])
+  /\ pendingChange' = [x \in F |-> IF x = l /\ pendingChange[l] # None
+                                     THEN [pendingChange[l] EXCEPT !.acks = @ \cup {v}]
+                                   ELSE IF x = v /\ StepsDown(v, proposal[l]) THEN None
+                                   ELSE pendingChange[x]]
+  /\ matchIndex'    = MatchIndexAfter(v, proposal[l])
+  /\ UNCHANGED <<alive, commitIndex, committed>>
 
-\* The change commits once a majority of the NEW election members persisted
-\* it (is_reach_majority_).  Committing START_WORKING ends reconfirm and
-\* commits the recovered log up to the barrier (saved_end_lsn_).
-\*
-\* FIX (see findings.md, finding 4): a degrade merged into reconfirm
-\* (can_do_degrade) starts from a config the new leader inherited and does
-\* not know to be committed.  It must also be acked by a majority of that
-\* previous config's election members, so that the previous config has
-\* settled on a majority before the next change takes effect (the Raft rule
-\* for single-member changes).  The code requires only the new majority; in
-\* 4F1A two degrades by two leaders then jump two members past the last
-\* committed config and the quorums stop intersecting.  In 2F1A both
-\* majorities are {survivor, A}, so nothing changes there.
+\* The change commits once a majority of the new E has persisted it
+\* (is_reach_majority_).  Committing the StartWorking log ends log
+\* reconfirmation and commits the recovered log up to the barrier
+\* (saved_end_lsn_).
 CommitConfig(l) ==
   /\ alive[l]
-  /\ cc[l] # None
-  /\ IsMajority(cc[l].acks, ElectionMembers(l))
-  /\ (cc[l].kind = "Degrade" /\ role[l] = "Reconfirm")
-        => IsMajority(cc[l].acks, meta[l].prev.sync \cup {A})
-  /\ cc' = [cc EXCEPT ![l] = None]
-  /\ IF cc[l].kind = "StartWorking"
-       THEN /\ role'      = [role EXCEPT ![l] = "Leader"]
-            /\ commitIdx' = [commitIdx EXCEPT ![l] = meta[l].barrier.idx]
-            /\ committed' = committed \cup Entries(log[l], meta[l].barrier.idx)
-       ELSE UNCHANGED <<role, commitIdx, committed>>
-  /\ UNCHANGED <<pid, log, meta, alive, promises, pq>>
+  /\ pendingChange[l] # None
+  /\ IsMajority(pendingChange[l].acks, ElectionGroup(l))
+  /\ pendingChange' = [pendingChange EXCEPT ![l] = None]
+  /\ IF pendingChange[l].kind = "StartWorking"
+       THEN /\ role'        = [role EXCEPT ![l] = "Leader"]
+            /\ commitIndex' = [commitIndex EXCEPT ![l] = config[l].barrier.index]
+            /\ committed'   = committed \cup Entries(log[l], config[l].barrier.index)
+       ELSE UNCHANGED <<role, commitIndex, committed>>
+  /\ UNCHANGED <<proposal, log, config, alive, promisedBy, prepareConfig, matchIndex>>
 
-\* When A is the election leader it pushes its meta to the F replicas
-\* (sync_meta_for_arb_election_leader); A never runs Phase 1.  The message
-\* carries A's current proposal_id with the barrier of A's meta
-\* (pre_sync_config_log_and_mode_meta_).  No lease is assumed: an F may
-\* still hold a leader role; like any receiver it steps down if A's
-\* proposal_id is larger (can_receive_config_log also accepts a leader in
-\* reconfirm at an equal proposal_id).
-ArbPush(f) ==
+\* When A is the election leader it pushes its configuration to the full
+\* replicas (sync_meta_for_arb_election_leader); A never runs log
+\* reconfirmation.  The message carries A's current proposal number with
+\* the barrier of A's configuration (pre_sync_config_log_and_mode_meta_).
+\* No lease is assumed: a full replica may still hold a leader role; like
+\* any receiver it steps down if A's proposal number is larger
+\* (can_receive_config_log also accepts a leader in log reconfirmation at
+\* an equal proposal number).
+ArbiterPushConfig(f) ==
   /\ alive[A]
   /\ CanBeElected(A)
-  /\ VersionLT(meta[f].curr.ver, meta[A].curr.ver)
-  /\ CanReceiveMeta(f, meta[A], pid[A])
-  /\ pid'      = [pid EXCEPT ![f] = pid[A]]
-  /\ meta'     = [meta EXCEPT ![f] = meta[A]]
-  /\ log'      = [log EXCEPT ![f] = LogAfterMeta(f, meta[A])]
-  /\ role'     = RoleAfter(f, pid[A])
-  /\ promises' = PromisesAfter(f, pid[A])
-  /\ pq'       = PqAfter(f, pid[A])
-  /\ cc'       = CcAfter(f, pid[A])
-  /\ UNCHANGED <<alive, commitIdx, committed>>
+  /\ VersionLT(config[f].curr.version, config[A].curr.version)
+  /\ ConfigAcceptable(f, config[A], proposal[A])
+  /\ proposal'      = [proposal EXCEPT ![f] = proposal[A]]
+  /\ config'        = [config EXCEPT ![f] = config[A]]
+  /\ log'           = [log EXCEPT ![f] = TruncateStaleEntries(f, config[A])]
+  /\ role'          = RoleAfter(f, proposal[A])
+  /\ promisedBy'    = PromisedByAfter(f, proposal[A])
+  /\ prepareConfig' = PrepareConfigAfter(f, proposal[A])
+  /\ pendingChange' = PendingChangeAfter(f, proposal[A])
+  /\ matchIndex'    = MatchIndexAfter(f, proposal[A])
+  /\ UNCHANGED <<alive, commitIndex, committed>>
 
-\* FIX (see findings.md, finding 3): a receiver that rejects A's push because
-\* its proposal_id is larger replies with that proposal_id, and A catches up,
-\* like a Raft node catching up on a larger term; A's next push is then
-\* accepted.  In the code the receiver rejects silently (can_receive_config_log
-\* requires equal proposal_ids), so A could never push to replicas that had
-\* promised a larger proposal_id to a candidate that then failed.  Raising
-\* A's own proposal_id only makes A reject more.
-ArbCatchUpPid(f) ==
+\* FIX (see findings.md, finding 3): a receiver that rejects A's push
+\* because it promised a larger proposal number replies with that number,
+\* and A catches up, as a Raft node catches up on a larger term; A's next
+\* push is then accepted.  In the code the receiver rejects silently
+\* (can_receive_config_log requires equal proposal numbers), so A could
+\* never push to replicas that had promised a larger proposal number to a
+\* candidate that then failed.  Raising A's own proposal number only makes
+\* A reject more.
+ArbiterAdoptProposal(f) ==
   /\ alive[A]
   /\ alive[f]
   /\ CanBeElected(A)
-  /\ VersionLT(meta[f].curr.ver, meta[A].curr.ver)
-  /\ pid[A] < pid[f]
-  /\ pid' = [pid EXCEPT ![A] = pid[f]]
-  /\ UNCHANGED <<log, meta, alive, role, promises, pq, cc, commitIdx, committed>>
+  /\ VersionLT(config[f].curr.version, config[A].curr.version)
+  /\ proposal[A] < proposal[f]
+  /\ proposal' = [proposal EXCEPT ![A] = proposal[f]]
+  /\ UNCHANGED <<log, config, alive, role, promisedBy, prepareConfig, pendingChange,
+                 commitIndex, matchIndex, committed>>
 
 -----------------------------------------------------------------------------
-(* Phase 2: the log (log_sliding_window.cpp) *)
+(* Log replication and commit (log_sliding_window.cpp) *)
 
-\* Writes are allowed while a config change is in flight; only the commit
-\* point is frozen (gen_committed_end_lsn_).
-Write(l) ==
+\* Writes are allowed while a configuration change is in flight; only the
+\* commit point is frozen (gen_committed_end_lsn_).
+ClientWrite(l) ==
   /\ alive[l]
   /\ role[l] = "Leader"
   /\ Len(log[l]) < MaxLogLen
-  /\ log' = [log EXCEPT ![l] = Append(@, pid[l])]
-  /\ UNCHANGED <<pid, meta, alive, role, promises, pq, cc, commitIdx, committed>>
+  /\ log' = [log EXCEPT ![l] = Append(@, proposal[l])]
+  /\ UNCHANGED <<proposal, config, alive, role, promisedBy, prepareConfig, pendingChange,
+                 commitIndex, matchIndex, committed>>
 
 FirstDiff(a, b) ==
   CHOOSE i \in 1..Min(Len(a), Len(b)) :
      /\ a[i] # b[i]
      /\ \A j \in 1..(i - 1) : a[j] = b[j]
 
-\* f receives one step of l's log: append the next entry when f's log is a
-\* prefix of l's, or drop f's suffix from the first conflict.  The receiver
-\* adopts l's proposal_id (try_update_proposal_id_, can_receive_log).
-\* Learners receive logs too.
-Replicate(f, l) ==
+\* f accepts one step of leader l's log: append the next entry when f's
+\* log is a prefix of l's, or drop f's suffix from the first conflict, or,
+\* when f already holds l's log, accept nothing new.  f then acknowledges
+\* the prefix it shares with l (match_lsn_map_), and adopts l's proposal
+\* number (try_update_proposal_id_, can_receive_log).  Learners accept
+\* entries too.
+AcceptEntry(f, l) ==
   /\ f # l
   /\ alive[f]
   /\ alive[l]
-  /\ role[l] \in {"Reconfirm", "Leader"}
-  /\ pid[f] <= pid[l]
+  /\ role[l] \in {"Reconfirming", "Leader"}
+  /\ proposal[f] <= proposal[l]
   /\ \/ /\ IsPrefix(log[f], log[l])
         /\ Len(log[f]) < Len(log[l])
         /\ log' = [log EXCEPT ![f] = Append(log[f], log[l][Len(log[f]) + 1])]
      \/ /\ \E i \in 1..Min(Len(log[f]), Len(log[l])) : log[f][i] # log[l][i]
         /\ log' = [log EXCEPT ![f] = SubSeq(log[f], 1, FirstDiff(log[f], log[l]) - 1)]
-  /\ pid'      = [pid EXCEPT ![f] = pid[l]]
-  /\ role'     = RoleAfter(f, pid[l])
-  /\ promises' = PromisesAfter(f, pid[l])
-  /\ pq'       = PqAfter(f, pid[l])
-  /\ cc'       = CcAfter(f, pid[l])
-  /\ UNCHANGED <<meta, alive, commitIdx, committed>>
+     \/ /\ IsPrefix(log[l], log[f])
+        /\ matchIndex[l][f] < Len(log[l])
+        /\ UNCHANGED log
+  /\ proposal'      = [proposal EXCEPT ![f] = proposal[l]]
+  /\ role'          = RoleAfter(f, proposal[l])
+  /\ promisedBy'    = PromisedByAfter(f, proposal[l])
+  /\ prepareConfig' = PrepareConfigAfter(f, proposal[l])
+  /\ pendingChange' = PendingChangeAfter(f, proposal[l])
+  /\ matchIndex'    = [x \in F |->
+                         IF x = l
+                         THEN [matchIndex[l] EXCEPT ![f] =
+                                 Max(@, Min(Len(log'[f]), Len(log[l])))]
+                         ELSE IF x = f /\ StepsDown(f, proposal[l]) THEN NoAcks
+                         ELSE matchIndex[x]]
+  /\ UNCHANGED <<config, alive, commitIndex, committed>>
 
-\* Position i is acknowledged by a majority of T (match_lsn_map_).
-AckedBy(l, i, T) ==
-  IsMajority({f \in T : /\ Len(log[f]) >= i
-                        /\ SubSeq(log[f], 1, i) = SubSeq(log[l], 1, i)}, T)
+\* Position i of l's log is accepted by a majority of T: an accept quorum
+\* has acknowledged it (match_lsn_map_).
+AcceptedBy(l, i, T) == IsMajority({f \in T : Acked(l, f, i)}, T)
 
-\* gen_committed_end_lsn_: before the barrier either the previous or the
-\* current log-sync list may commit, capped at the barrier; after it only
-\* the current list.  A never counts.
+\* gen_committed_end_lsn_: before the barrier, an accept quorum of either
+\* the previous or the current S may commit, capped at the barrier; after
+\* it, only the current S.  A never counts.
 CanCommitUpTo(l, i) ==
-  LET b == meta[l].barrier.idx IN
-  IF commitIdx[l] < b
+  LET b == config[l].barrier.index IN
+  IF commitIndex[l] < b
   THEN /\ i <= b
-       /\ AckedBy(l, i, meta[l].prev.sync) \/ AckedBy(l, i, meta[l].curr.sync)
-  ELSE AckedBy(l, i, meta[l].curr.sync)
+       /\ \/ AcceptedBy(l, i, config[l].prev.commitGroup)
+          \/ AcceptedBy(l, i, config[l].curr.commitGroup)
+  ELSE AcceptedBy(l, i, config[l].curr.commitGroup)
 
-\* No commit while a config change with A is in flight
-\* (is_changing_config_with_arb).
-CommitLog(l, i) ==
+\* Commit freeze: no commit while a configuration change involving A is in
+\* flight (is_changing_config_with_arb).
+CommitEntries(l, i) ==
   /\ alive[l]
   /\ role[l] = "Leader"
-  /\ cc[l] = None
-  /\ commitIdx[l] < i
+  /\ pendingChange[l] = None
+  /\ commitIndex[l] < i
   /\ i <= Len(log[l])
   /\ CanCommitUpTo(l, i)
-  /\ commitIdx' = [commitIdx EXCEPT ![l] = i]
-  /\ committed' = committed \cup Entries(log[l], i)
-  /\ UNCHANGED <<pid, log, meta, alive, role, promises, pq, cc>>
+  /\ commitIndex' = [commitIndex EXCEPT ![l] = i]
+  /\ committed'   = committed \cup Entries(log[l], i)
+  /\ UNCHANGED <<proposal, log, config, alive, role, promisedBy, prepareConfig,
+                 pendingChange, matchIndex>>
 
 -----------------------------------------------------------------------------
-(* Failures.  A crash keeps pid, log and meta and drops everything else.  *)
-(* A partition needs no action: steps between the two sides simply do not *)
-(* happen, and a partitioned leader keeps acting on its own.              *)
+(* Failures.  A crash keeps the proposal number, the log and the           *)
+(* configuration, and drops everything else.  A partition needs no action: *)
+(* steps between the two sides simply do not happen, and a partitioned     *)
+(* leader keeps acting on its own.                                         *)
 
 Crash(s) ==
   /\ alive[s]
   /\ alive' = [alive EXCEPT ![s] = FALSE]
   /\ IF s \in F
-       THEN /\ role'      = [role EXCEPT ![s] = "Follower"]
-            /\ promises'  = [promises EXCEPT ![s] = {}]
-            /\ pq'        = [pq EXCEPT ![s] = NoPrepare]
-            /\ cc'        = [cc EXCEPT ![s] = None]
-            /\ commitIdx' = [commitIdx EXCEPT ![s] = 0]
-       ELSE UNCHANGED <<role, promises, pq, cc, commitIdx>>
-  /\ UNCHANGED <<pid, log, meta, committed>>
+       THEN /\ role'          = [role EXCEPT ![s] = "Follower"]
+            /\ promisedBy'    = [promisedBy EXCEPT ![s] = {}]
+            /\ prepareConfig' = [prepareConfig EXCEPT ![s] = NoPrepareConfig]
+            /\ pendingChange' = [pendingChange EXCEPT ![s] = None]
+            /\ commitIndex'   = [commitIndex EXCEPT ![s] = 0]
+            /\ matchIndex'    = [matchIndex EXCEPT ![s] = NoAcks]
+       ELSE UNCHANGED <<role, promisedBy, prepareConfig, pendingChange, commitIndex,
+                        matchIndex>>
+  /\ UNCHANGED <<proposal, log, config, committed>>
 
 Restart(s) ==
   /\ ~alive[s]
   /\ alive' = [alive EXCEPT ![s] = TRUE]
-  /\ UNCHANGED <<pid, log, meta, role, promises, pq, cc, commitIdx, committed>>
+  /\ UNCHANGED <<proposal, log, config, role, promisedBy, prepareConfig, pendingChange,
+                 commitIndex, matchIndex, committed>>
 
 -----------------------------------------------------------------------------
 (* Next-state relation *)
 
 Next ==
-  \/ \E c \in F, b \in 1..MaxPid    : Elect(c, b)
-  \/ \E c \in F, v \in Server       : Promise(v, c)
-  \/ \E c \in F                     : Fetch(c)
-  \/ \E l \in F                     : StartWorking(l)
-  \/ \E l, s \in F                  : Degrade(l, s)
-  \/ \E l, m \in F                  : Upgrade(l, m)
-  \/ \E l \in F, v \in Server       : SendMeta(v, l)
-  \/ \E l \in F                     : CommitConfig(l)
-  \/ \E f \in F                     : ArbPush(f)
-  \/ \E f \in F                     : ArbCatchUpPid(f)
-  \/ \E l \in F                     : Write(l)
-  \/ \E f, l \in F                  : Replicate(f, l)
-  \/ \E l \in F, i \in 1..MaxLogLen : CommitLog(l, i)
-  \/ \E s \in Server                : Crash(s) \/ Restart(s)
+  \/ \E c \in F, p \in 1..MaxProposal : Prepare(c, p)
+  \/ \E c \in F, v \in Server         : Promise(v, c)
+  \/ \E c \in F                       : RecoverLog(c)
+  \/ \E l \in F                       : StartWorking(l)
+  \/ \E l \in F                       : ConfirmConfig(l)
+  \/ \E l, s \in F                    : Degrade(l, s)
+  \/ \E l, m \in F                    : Upgrade(l, m)
+  \/ \E l \in F, v \in Server         : AcceptConfig(v, l)
+  \/ \E l \in F                       : CommitConfig(l)
+  \/ \E f \in F                       : ArbiterPushConfig(f)
+  \/ \E f \in F                       : ArbiterAdoptProposal(f)
+  \/ \E l \in F                       : ClientWrite(l)
+  \/ \E f, l \in F                    : AcceptEntry(f, l)
+  \/ \E l \in F, i \in 1..MaxLogLen   : CommitEntries(l, i)
+  \/ \E s \in Server                  : Crash(s) \/ Restart(s)
 
 Spec == Init /\ [][Next]_vars
 
 Symmetry == Permutations(F)
 
 -----------------------------------------------------------------------------
-(* Safety *)
+(* Safety: Theorem 1, Lemma 2 and supporting invariants *)
 
-CfgType  == [ver : (0..MaxPid) \X (0..MaxSeq), sync : SUBSET F]
-MetaType == [prev : CfgType, curr : CfgType,
-             barrier : [idx : 0..MaxLogLen, pid : 0..MaxPid]]
+VersionType    == (0..MaxProposal) \X (0..MaxConfigSeq)
+ConfigType     == [version : VersionType, commitGroup : SUBSET F]
+ConfigMetaType == [prev : ConfigType, curr : ConfigType,
+                   barrier : [index : 0..MaxLogLen, proposal : 0..MaxProposal]]
 
 TypeOK ==
-  /\ pid       \in [Server -> 0..MaxPid]
-  /\ log       \in [F -> Seq(1..MaxPid)]
+  /\ proposal      \in [Server -> 0..MaxProposal]
+  /\ log           \in [F -> Seq(1..MaxProposal)]
   /\ \A f \in F : Len(log[f]) <= MaxLogLen
-  /\ meta      \in [Server -> MetaType]
-  /\ alive     \in [Server -> BOOLEAN]
-  /\ role      \in [F -> {"Follower", "Prepare", "Reconfirm", "Leader"}]
-  /\ promises  \in [F -> SUBSET Server]
-  /\ pq        \in [F -> [mem : SUBSET Server, ver : (0..MaxPid) \X (0..MaxSeq)]]
-  /\ cc        \in [F -> {None} \cup [kind : {"StartWorking", "Degrade", "Upgrade"},
-                                       acks : SUBSET Server]]
-  /\ commitIdx \in [F -> 0..MaxLogLen]
-  /\ committed \subseteq [idx : 1..MaxLogLen, pid : 1..MaxPid]
+  /\ config        \in [Server -> ConfigMetaType]
+  /\ alive         \in [Server -> BOOLEAN]
+  /\ role          \in [F -> {"Follower", "Candidate", "Reconfirming", "Leader"}]
+  /\ promisedBy    \in [F -> SUBSET Server]
+  /\ prepareConfig \in [F -> [members : SUBSET Server, version : VersionType]]
+  /\ pendingChange \in [F -> {None} \cup
+                         [kind : {"StartWorking", "Confirm", "Degrade", "Upgrade"},
+                          acks : SUBSET Server]]
+  /\ commitIndex   \in [F -> 0..MaxLogLen]
+  /\ matchIndex    \in [F -> [F -> 0..MaxLogLen]]
+  /\ committed     \subseteq [index : 1..MaxLogLen, proposal : 1..MaxProposal]
 
-\* At most one replica leads (past the prepare quorum) at each proposal_id.
-OneLeaderPerPid ==
+\* Theorem 1(a), leader completeness: a leader holds every committed entry
+\* whose proposal number is not above its own.
+LeaderCompleteness ==
+  \A l \in F :
+     role[l] = "Leader" =>
+        \A e \in committed : e.proposal <= proposal[l] => HoldsEntry(log[l], e)
+
+\* Theorem 1(a), checked ahead of time: every candidate that could finish
+\* the Prepare phase now would recover every committed entry, from any
+\* prepare quorum that can elect it.
+RecoveryComplete ==
+  \A c \in F :
+     c \in config[c].curr.commitGroup =>
+        \A Q \in SUBSET ElectionGroup(c) :
+           IsPrepareQuorum(Q, c) =>
+              \A m \in RecoverySources(Q) : \A e \in committed : HoldsEntry(log[m], e)
+
+\* Theorem 1(b), agreement: no LSN is committed with two different
+\* proposal numbers.
+Agreement ==
+  \A e1, e2 \in committed : e1.index = e2.index => e1.proposal = e2.proposal
+
+\* Lemma 2: the configurations that can still elect a leader are adjacent,
+\* i.e. their log commit member groups differ by at most one member, so
+\* their prepare quorums intersect (Lemma 1(b)).  Pairwise adjacent groups
+\* number at most two: the last configuration committed under its
+\* proposer's own proposal number, and one change in progress on top of
+\* it.  Configuration X can elect if a member of its S holds X and a
+\* majority of its E holds no newer version.  This ignores liveness and
+\* promised proposal numbers, so it over-approximates.
+CanElect(X) ==
+  /\ \E c \in X.commitGroup : config[c].curr = X
+  /\ LET E == X.commitGroup \cup {A} IN
+     IsMajority({v \in E : VersionLE(config[v].curr.version, X.version)}, E)
+
+Adjacent(S1, S2) == Cardinality((S1 \ S2) \cup (S2 \ S1)) <= 1
+
+ElectableConfigsAdjacent ==
+  \A f1, f2 \in F :
+     CanElect(config[f1].curr) /\ CanElect(config[f2].curr)
+        => Adjacent(config[f1].curr.commitGroup, config[f2].curr.commitGroup)
+
+\* Lemma 2, consequence: at most one replica completes the Prepare phase
+\* per proposal number.
+OneLeaderPerProposal ==
   \A l1, l2 \in F :
      /\ l1 # l2
-     /\ role[l1] \in {"Reconfirm", "Leader"}
-     /\ role[l2] \in {"Reconfirm", "Leader"}
-     => pid[l1] # pid[l2]
+     /\ role[l1] \in {"Reconfirming", "Leader"}
+     /\ role[l2] \in {"Reconfirming", "Leader"}
+     => proposal[l1] # proposal[l2]
+
+\* Lemma 2, consequence: at most one leader can make progress, i.e. could
+\* advance its commit point: nothing in flight, and no accept quorum of its
+\* S has promised a larger proposal number.
+ActiveLeader(l) ==
+  /\ role[l] = "Leader"
+  /\ pendingChange[l] = None
+  /\ IsMajority({f \in config[l].curr.commitGroup : proposal[f] <= proposal[l]},
+                config[l].curr.commitGroup)
+
+OneActiveLeader ==
+  \A l1, l2 \in F : ActiveLeader(l1) /\ ActiveLeader(l2) => l1 = l2
 
 LogMatching ==
   \A f1, f2 \in F :
      \A i \in 1..Min(Len(log[f1]), Len(log[f2])) :
         log[f1][i] = log[f2][i] => SubSeq(log[f1], 1, i) = SubSeq(log[f2], 1, i)
 
-\* I1: any F that could finish Phase 1 recovers every committed entry: the
-\* metadata quorum always meets a data replica holding the committed log.
-QuorumIntersection ==
-  \A c \in F :
-     c \in meta[c].curr.sync =>
-        \A Q \in SUBSET ElectionMembers(c) :
-           ElectableBy(c, Q) =>
-              \A m \in MaxLogServers(Q) : \A e \in committed : Has(log[m], e)
+\* A's configuration is never ahead of what a majority of its S can catch
+\* up to: they already hold it or a newer one, or their log matches its
+\* barrier, so they can accept it from A.  A configuration confirmation
+\* (the same S under a larger proposal number) is the first step of a
+\* degrade, and A may be ahead of the member about to be degraded; a
+\* majority of the others suffices then.
+CanCatchUp(f, m) ==
+  VersionLE(m.curr.version, config[f].curr.version) \/ MatchesBarrier(f, m)
 
-\* I2b: at most one leader can advance the commit point.
-AbleToCommit(l) ==
-  /\ role[l] = "Leader"
-  /\ cc[l] = None
-  /\ IsMajority({f \in meta[l].curr.sync : pid[f] <= pid[l]}, meta[l].curr.sync)
+IsConfirmation(m) ==
+  /\ m.curr.commitGroup = m.prev.commitGroup
+  /\ m.prev.version[1] < m.curr.version[1]
 
-NoDualPrimary ==
-  \A l1, l2 \in F : AbleToCommit(l1) /\ AbleToCommit(l2) => l1 = l2
-
-\* I3a: one LSN is never committed with two different proposal_ids.
-CommittedConsistent ==
-  \A e1, e2 \in committed : e1.idx = e2.idx => e1.pid = e2.pid
-
-\* I3b: a leader holds every committed entry whose pid is not above its own.
-LeaderCompleteness ==
-  \A l \in F :
-     role[l] = "Leader" =>
-        \A e \in committed : e.pid <= pid[l] => Has(log[l], e)
+ArbiterNotAhead ==
+  LET m     == config[A]
+      S     == m.curr.commitGroup
+      Ready == {f \in S : CanCatchUp(f, m)}
+  IN  \/ IsMajority(Ready, S)
+      \/ IsConfirmation(m) /\ \E s \in S : IsMajority(Ready, S \ {s})
 
 CommittedMonotonic == [][committed \subseteq committed']_vars
 
-\* I4: A's config is never ahead of what a majority of its log-sync list
-\* can catch up to, either because they already have it or because their
-\* log passes its barrier (so they can accept it from A).
-ArbNotAhead ==
-  LET m == meta[A] IN
-  IsMajority({f \in m.curr.sync : \/ VersionLE(m.curr.ver, meta[f].curr.ver)
-                                  \/ PassesBarrier(f, m)},
-             m.curr.sync)
-
-PidMonotonic == [][\A s \in Server : pid'[s] >= pid[s]]_vars
+ProposalMonotonic == [][\A s \in Server : proposal'[s] >= proposal[s]]_vars
 
 ConfigVersionMonotonic ==
-  [][\A s \in Server : VersionLE(meta[s].curr.ver, meta'[s].curr.ver)]_vars
+  [][\A s \in Server : VersionLE(config[s].curr.version, config'[s].curr.version)]_vars
 
 -----------------------------------------------------------------------------
-(* Liveness: from a clean start, a minority failure never stops service.  *)
+(* Liveness (Theorem 2): from a clean start, a minority failure never      *)
+(* stops service.                                                          *)
 (*                                                                         *)
-(* Environment assumptions, used only here (Spec makes none of them).     *)
-(* They hold from Init on; recovery after a messy prefix (competing       *)
-(* candidates, a wrong degrade, restarts) is not covered:                 *)
-(*  - failures are permanent and always a minority of Server;             *)
-(*  - the election is stable: nobody campaigns while another live F is    *)
-(*    past Follower (A pushes as election leader only while every live F  *)
-(*    is a Follower), and a candidate retries only when stuck, with a     *)
-(*    proposal_id above every live replica's;                             *)
-(*  - failure detection is accurate: only dead F are degraded;            *)
+(* Environment assumptions, used only here (Spec makes none of them).      *)
+(* They hold from Init on; recovery after a messy prefix (competing        *)
+(* candidates, a wrong degrade, restarts) is not covered:                  *)
+(*  - failures are permanent and always a minority of Server;              *)
+(*  - the election is stable: nobody campaigns while another live full     *)
+(*    replica is past Follower (A pushes as election leader only while     *)
+(*    every live full replica is a Follower), and a candidate retries only *)
+(*    when stuck, with a proposal number above every live replica's;       *)
+(*  - failure detection is accurate: only failed full replicas are         *)
+(*    degraded, and a leader confirms its configuration only when it has a *)
+(*    failed member to degrade;                                            *)
 (*  - weak fairness for every protocol step except client writes.          *)
 
 Down == {s \in Server : ~alive[s]}
 
 CrashLive(s) == Crash(s) /\ Cardinality(Down \cup {s}) * 2 < Cardinality(Server)
 
-NextPid == 1 + SetMax({pid[s] : s \in Server \ Down})
+NextProposal == 1 + SetMax({proposal[s] : s \in Server \ Down})
 
 OthersFollow(c) == \A f \in F \ {c} : ~alive[f] \/ role[f] = "Follower"
 
-\* c cannot finish Phase 1: Fetch is impossible and no more promises can come.
+\* c cannot finish the Prepare phase: RecoverLog is impossible and no more
+\* promises can come.
 PrepareStuck(c) ==
-  /\ role[c] = "Prepare"
-  /\ ~(/\ IsMajority(promises[c], pq[c].mem)
-       /\ \E m \in MaxLogServers(promises[c]) : alive[m])
-  /\ {v \in pq[c].mem \ promises[c] :
-        alive[v] /\ pid[v] < pid[c] /\ VersionLE(meta[v].curr.ver, pq[c].ver)} = {}
+  /\ role[c] = "Candidate"
+  /\ ~(/\ IsMajority(promisedBy[c], prepareConfig[c].members)
+       /\ \E m \in RecoverySources(promisedBy[c]) : alive[m])
+  /\ {v \in prepareConfig[c].members \ promisedBy[c] :
+        /\ alive[v]
+        /\ proposal[v] < proposal[c]
+        /\ VersionLE(config[v].curr.version, prepareConfig[c].version)} = {}
 
-ElectLive(c) ==
+PrepareLive(c) ==
   /\ OthersFollow(c)
   /\ role[c] = "Follower" \/ PrepareStuck(c)
-  /\ NextPid <= MaxPid
-  /\ Elect(c, NextPid)
+  /\ NextProposal <= MaxProposal
+  /\ Prepare(c, NextProposal)
 
-DegradeLive(l) == \E s \in meta[l].curr.sync : ~alive[s] /\ Degrade(l, s)
+ConfirmLive(l) ==
+  /\ \E s \in config[l].curr.commitGroup : ~alive[s] /\ CanDegrade(l, s)
+  /\ ConfirmConfig(l)
 
-\* A acts as the election leader (and pushes its meta) only while no live F
-\* holds the election: the same election-stability assumption as for F.
-ArbIsElectionLeader == \A f \in F : ~alive[f] \/ role[f] = "Follower"
-ArbPushLive(f)      == ArbIsElectionLeader /\ ArbPush(f)
-ArbCatchUpLive(f)   == ArbIsElectionLeader /\ ArbCatchUpPid(f)
+DegradeLive(l) == \E s \in config[l].curr.commitGroup : ~alive[s] /\ Degrade(l, s)
+
+\* A acts as the election leader (and pushes its configuration) only while
+\* no live full replica holds the election: the same election-stability
+\* assumption as for full replicas.
+ArbiterIsElectionLeader == \A f \in F : ~alive[f] \/ role[f] = "Follower"
+ArbiterPushLive(f)      == ArbiterIsElectionLeader /\ ArbiterPushConfig(f)
+ArbiterAdoptLive(f)     == ArbiterIsElectionLeader /\ ArbiterAdoptProposal(f)
 
 \* A stuck candidate that can no longer win the election loses it (its
-\* election lease is not renewed), so that another F may campaign.
+\* election lease is not renewed), so that another full replica may
+\* campaign.
 LoseElection(c) ==
   /\ PrepareStuck(c)
   /\ ~CanBeElected(c)
-  /\ role'     = [role EXCEPT ![c] = "Follower"]
-  /\ promises' = [promises EXCEPT ![c] = {}]
-  /\ pq'       = [pq EXCEPT ![c] = NoPrepare]
-  /\ UNCHANGED <<pid, log, meta, alive, cc, commitIdx, committed>>
+  /\ role'          = [role EXCEPT ![c] = "Follower"]
+  /\ promisedBy'    = [promisedBy EXCEPT ![c] = {}]
+  /\ prepareConfig' = [prepareConfig EXCEPT ![c] = NoPrepareConfig]
+  /\ UNCHANGED <<proposal, log, config, alive, pendingChange, commitIndex, matchIndex,
+                 committed>>
 
 LiveNext ==
-  \/ \E c \in F                     : ElectLive(c)
+  \/ \E c \in F                     : PrepareLive(c)
   \/ \E c \in F                     : LoseElection(c)
   \/ \E c \in F, v \in Server       : Promise(v, c)
-  \/ \E c \in F                     : Fetch(c)
+  \/ \E c \in F                     : RecoverLog(c)
   \/ \E l \in F                     : StartWorking(l)
+  \/ \E l \in F                     : ConfirmLive(l)
   \/ \E l \in F                     : DegradeLive(l)
-  \/ \E l \in F, v \in Server       : SendMeta(v, l)
+  \/ \E l \in F, v \in Server       : AcceptConfig(v, l)
   \/ \E l \in F                     : CommitConfig(l)
-  \/ \E f \in F                     : ArbPushLive(f)
-  \/ \E f \in F                     : ArbCatchUpLive(f)
-  \/ \E l \in F                     : Write(l)
-  \/ \E f, l \in F                  : Replicate(f, l)
-  \/ \E l \in F, i \in 1..MaxLogLen : CommitLog(l, i)
+  \/ \E f \in F                     : ArbiterPushLive(f)
+  \/ \E f \in F                     : ArbiterAdoptLive(f)
+  \/ \E l \in F                     : ClientWrite(l)
+  \/ \E f, l \in F                  : AcceptEntry(f, l)
+  \/ \E l \in F, i \in 1..MaxLogLen : CommitEntries(l, i)
   \/ \E s \in Server                : CrashLive(s)
 
 Fairness ==
-  /\ \A c \in F                     : WF_vars(ElectLive(c))
+  /\ \A c \in F                     : WF_vars(PrepareLive(c))
   /\ \A c \in F                     : WF_vars(LoseElection(c))
   /\ \A c \in F, v \in Server       : WF_vars(Promise(v, c))
-  /\ \A c \in F                     : WF_vars(Fetch(c))
+  /\ \A c \in F                     : WF_vars(RecoverLog(c))
   /\ \A l \in F                     : WF_vars(StartWorking(l))
+  /\ \A l \in F                     : WF_vars(ConfirmLive(l))
   /\ \A l \in F                     : WF_vars(DegradeLive(l))
-  /\ \A l \in F, v \in Server       : WF_vars(SendMeta(v, l))
+  /\ \A l \in F, v \in Server       : WF_vars(AcceptConfig(v, l))
   /\ \A l \in F                     : WF_vars(CommitConfig(l))
-  /\ \A f \in F                     : WF_vars(ArbPushLive(f))
-  /\ \A f \in F                     : WF_vars(ArbCatchUpLive(f))
-  /\ \A f, l \in F                  : WF_vars(Replicate(f, l))
-  /\ \A l \in F, i \in 1..MaxLogLen : WF_vars(CommitLog(l, i))
+  /\ \A f \in F                     : WF_vars(ArbiterPushLive(f))
+  /\ \A f \in F                     : WF_vars(ArbiterAdoptLive(f))
+  /\ \A f, l \in F                  : WF_vars(AcceptEntry(f, l))
+  /\ \A l \in F, i \in 1..MaxLogLen : WF_vars(CommitEntries(l, i))
 
 LiveSpec == Init /\ [][LiveNext]_vars /\ Fairness
 
-\* A live leader, with no config change in flight, whose log-sync list has a
-\* live majority: it can commit writes.
+\* A live leader, with nothing in flight, whose S has a live majority: it
+\* can commit writes.
 StableLeader(l) ==
   /\ alive[l]
   /\ role[l] = "Leader"
-  /\ cc[l] = None
-  /\ IsMajority({f \in meta[l].curr.sync : alive[f]}, meta[l].curr.sync)
+  /\ pendingChange[l] = None
+  /\ LET S == config[l].curr.commitGroup IN IsMajority({f \in S : alive[f]}, S)
 
 \* Service resumes: eventually there is a stable leader forever.
 EventuallyStableLeader == <>[](\E l \in F : StableLeader(l))
@@ -665,108 +825,119 @@ EventuallyStableLeader == <>[](\E l \in F : StableLeader(l))
 WritesCommit ==
   \A l \in F, i \in 1..MaxLogLen :
      (alive[l] /\ role[l] = "Leader" /\ Len(log[l]) >= i)
-        ~> (commitIdx[l] >= i \/ ~alive[l] \/ role[l] # "Leader")
+        ~> (commitIndex[l] >= i \/ ~alive[l] \/ role[l] # "Leader")
 
 -----------------------------------------------------------------------------
-(* Coverage witnesses: each must be VIOLATED, which proves the path is    *)
-(* reachable.  Checked by check-witnesses.sh with Coverage.cfg.           *)
+(* Coverage witnesses: each must be VIOLATED, which proves the path is     *)
+(* reachable.  Checked by check-witnesses.sh with Coverage.cfg.            *)
 
-NoReconfirm == \A f \in F : role[f] # "Reconfirm"
+NoReconfirming == \A f \in F : role[f] # "Reconfirming"
 
 NoLeader == \A f \in F : role[f] # "Leader"
 
-NoArbPush == ~\E f \in F : ENABLED ArbPush(f)
+NoArbiterPush == ~\E f \in F : ENABLED ArbiterPushConfig(f)
 
-\* A catches up on a larger proposal_id (fix for finding 3).
-NoArbCatchUp == ~\E f \in F : ENABLED ArbCatchUpPid(f)
+\* A catches up on a larger proposal number (the fix for finding 3).
+NoArbiterAdopt == ~\E f \in F : ENABLED ArbiterAdoptProposal(f)
 
-\* A pushes while some F is in a leader role (no lease is assumed).
-NoArbPushBesideLeader ==
-  ~\E f \in F : ENABLED ArbPush(f) /\ \E g \in F : role[g] # "Follower"
+\* A pushes while some full replica holds a leader role (no lease is
+\* assumed).
+NoArbiterPushBesideLeader ==
+  ~\E f \in F : ENABLED ArbiterPushConfig(f) /\ \E g \in F : role[g] # "Follower"
 
 NoCommittedEntry == committed = {}
 
-\* A degrade committed, and afterwards a new log committed past its barrier.
+\* A degrade committed, and afterwards an entry committed past its barrier.
 NoDegradeCommitted ==
   ~\E l \in F : /\ role[l] = "Leader"
-                /\ cc[l] = None
-                /\ meta[l].curr.sync # F
-                /\ commitIdx[l] > meta[l].barrier.idx
+                /\ pendingChange[l] = None
+                /\ config[l].curr.commitGroup # F
+                /\ commitIndex[l] > config[l].barrier.index
+
+\* A new leader confirmed its inherited configuration and is degrading a
+\* member during log reconfirmation (the fix for finding 4).
+NoDegradeAfterConfirm ==
+  ~\E l \in F : /\ role[l] = "Reconfirming"
+                /\ pendingChange[l] # None
+                /\ pendingChange[l].kind = "Degrade"
+                /\ config[l].prev.version[1] = proposal[l]
 
 \* The last committed change re-added a learner, which had to catch up on
-\* committed logs first.
+\* committed entries first.
 NoUpgradeAfterDegrade ==
   ~\E l \in F : /\ role[l] = "Leader"
-                /\ cc[l] = None
-                /\ meta[l].curr.sync = F
-                /\ meta[l].prev.sync # F
+                /\ pendingChange[l] = None
+                /\ config[l].curr.commitGroup = F
+                /\ config[l].prev.commitGroup # F
                 /\ committed # {}
 
-\* Under a degraded config from an earlier proposal_id, a leader finished
-\* reconfirm (its START_WORKING kept the degraded list) with committed logs
-\* to recover.
+\* Under a degraded configuration from a smaller proposal number, a leader
+\* finished log reconfirmation (its StartWorking log kept the degraded S)
+\* with committed entries to recover.
 NoReconfirmAfterDegrade ==
   ~\E l \in F : /\ role[l] = "Leader"
-                /\ meta[l].curr.sync # F
-                /\ meta[l].prev.sync = meta[l].curr.sync
-                /\ meta[l].prev.ver[1] < pid[l]
+                /\ config[l].curr.commitGroup # F
+                /\ config[l].prev.commitGroup = config[l].curr.commitGroup
+                /\ config[l].prev.version[1] < proposal[l]
                 /\ committed # {}
 
-\* Some receiver would truncate ghost logs on accepting a config.
-NoGhostTruncate ==
+\* Some receiver would discard stale entries on accepting a configuration.
+NoStaleTruncate ==
   ~\E l \in F, v \in F :
-      /\ ENABLED SendMeta(v, l)
-      /\ LogAfterMeta(v, meta[l]) # log[v]
+      /\ ENABLED AcceptConfig(v, l)
+      /\ TruncateStaleEntries(v, config[l]) # log[v]
 
-\* A's push (the path fix 3 changed) would truncate ghost logs.
-NoArbGhostTruncate ==
+\* A's push (the path the fix for finding 2 changed) would discard stale
+\* entries.
+NoArbiterStaleTruncate ==
   ~\E f \in F :
-      /\ ENABLED ArbPush(f)
-      /\ LogAfterMeta(f, meta[A]) # log[f]
+      /\ ENABLED ArbiterPushConfig(f)
+      /\ TruncateStaleEntries(f, config[A]) # log[f]
 
-\* The log-sync list shrank to half of F and a log committed afterwards (in
-\* 4F1A this needs two single-member degrades).
-NoHalfSyncCommit ==
+\* S shrank to half of F and an entry committed afterwards (in 4F1A this
+\* needs two single-member degrades).
+NoHalfGroupCommit ==
   ~\E l \in F : /\ role[l] = "Leader"
-                /\ cc[l] = None
-                /\ Cardinality(meta[l].curr.sync) * 2 = Cardinality(F)
-                /\ commitIdx[l] > meta[l].barrier.idx
+                /\ pendingChange[l] = None
+                /\ Cardinality(config[l].curr.commitGroup) * 2 = Cardinality(F)
+                /\ commitIndex[l] > config[l].barrier.index
 
-\* One F and A are down, yet a leader commits without any degrade (in 4F1A
-\* three F are still a majority of four; unreachable in 2F1A).
-NoCommitWithFAndArbDown ==
+\* One full replica and A are down, yet a leader commits without any
+\* degrade (in 4F1A three full replicas are still a majority of four;
+\* unreachable in 2F1A).
+NoCommitWithFAndArbiterDown ==
   ~\E l, f \in F : /\ role[l] = "Leader"
-                   /\ meta[l].curr.sync = F
+                   /\ config[l].curr.commitGroup = F
                    /\ ~alive[f]
                    /\ ~alive[A]
-                   /\ commitIdx[l] > meta[l].barrier.idx
+                   /\ commitIndex[l] > config[l].barrier.index
 
-\* The design's liveness boundary: every F of a degraded log-sync list is
-\* down and a live learner misses committed logs (in 2F1A the list is the
-\* single survivor; in 4F1A it is two F).
+\* The design's liveness boundary: every member of a degraded S is down and
+\* a live learner misses committed entries (in 2F1A, S is the single
+\* survivor; in 4F1A it is two full replicas).
 NoLearnerWindow ==
   ~\E f, g \in F :
-      LET S == meta[f].curr.sync IN
+      LET S == config[f].curr.commitGroup IN
       /\ f \in S
       /\ S # F
       /\ \A x \in S : ~alive[x]
       /\ alive[g]
       /\ g \notin S
-      /\ \E e \in committed : ~Has(log[g], e)
+      /\ \E e \in committed : ~HoldsEntry(log[g], e)
 
-\* Liveness scenarios, checked with LiveCoverage.cfg (LiveSpec): each must be
-\* VIOLATED, which proves the scenario occurs in the liveness model.
+\* Liveness scenarios, checked with LiveCoverage.cfg (LiveSpec): each must
+\* be VIOLATED, which proves the scenario occurs in the liveness model.
 
-\* An F is down and a leader serves (the survivor degraded it).
+\* A full replica is down and a leader serves (the survivor degraded it).
 NoServingAfterFCrash == ~\E l, f \in F : StableLeader(l) /\ ~alive[f]
 
 \* The old leader is down and a new leader serves the entries it committed.
 NoServingAfterLeaderCrash ==
   ~\E l, f \in F : /\ StableLeader(l)
                    /\ ~alive[f]
-                   /\ \E e \in committed : e.pid < pid[l]
+                   /\ \E e \in committed : e.proposal < proposal[l]
 
 \* A is down and a leader serves.
-NoServingAfterArbCrash == ~\E l \in F : StableLeader(l) /\ ~alive[A]
+NoServingAfterArbiterCrash == ~\E l \in F : StableLeader(l) /\ ~alive[A]
 
 =============================================================================

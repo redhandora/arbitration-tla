@@ -1,7 +1,5 @@
-Error: Temporal properties were violated.
-
-Error: The following behavior constitutes a counter-example:
-
+Error: Invariant ElectableConfigsAdjacent is violated.
+Error: The behavior up to this point is:
 State 1: <Initial predicate>
 /\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
 /\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
@@ -40,11 +38,11 @@ State 1: <Initial predicate>
 /\ role = (f1 :> "Follower" @@ f2 :> "Follower" @@ f3 :> "Follower" @@ f4 :> "Follower")
 /\ promisedBy = (f1 :> {} @@ f2 :> {} @@ f3 :> {} @@ f4 :> {})
 
-State 2: <PrepareLive line 746, col 3 to line 749, col 29 of module Arbitration>
+State 2: <Prepare line 229, col 3 to line 241, col 73 of module Arbitration>
 /\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
-/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
+/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
   f2 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f3 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
+  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
   f4 :> [version |-> <<0, 0>>, members |-> {}] )
 /\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> TRUE @@ f4 :> TRUE @@ a :> TRUE)
 /\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
@@ -52,7 +50,7 @@ State 2: <PrepareLive line 746, col 3 to line 749, col 29 of module Arbitration>
   f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
   f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
 /\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
-/\ proposal = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 1 @@ f4 :> 0 @@ a :> 0)
+/\ proposal = (f1 :> 2 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0 @@ a :> 0)
 /\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
 /\ config = ( f1 :>
       [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
@@ -75,14 +73,14 @@ State 2: <PrepareLive line 746, col 3 to line 749, col 29 of module Arbitration>
         barrier |-> [proposal |-> 0, index |-> 0],
         prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
 /\ committed = {}
-/\ role = (f1 :> "Follower" @@ f2 :> "Follower" @@ f3 :> "Candidate" @@ f4 :> "Follower")
-/\ promisedBy = (f1 :> {} @@ f2 :> {} @@ f3 :> {f3} @@ f4 :> {})
+/\ role = (f1 :> "Candidate" @@ f2 :> "Follower" @@ f3 :> "Follower" @@ f4 :> "Follower")
+/\ promisedBy = (f1 :> {f1} @@ f2 :> {} @@ f3 :> {} @@ f4 :> {})
 
-State 3: <Promise line 252, col 3 to line 266, col 61 of module Arbitration>
+State 3: <Prepare line 229, col 3 to line 241, col 73 of module Arbitration>
 /\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
-/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f2 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f3 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
+/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
+  f2 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
+  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
   f4 :> [version |-> <<0, 0>>, members |-> {}] )
 /\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> TRUE @@ f4 :> TRUE @@ a :> TRUE)
 /\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
@@ -90,7 +88,7 @@ State 3: <Promise line 252, col 3 to line 266, col 61 of module Arbitration>
   f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
   f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
 /\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
-/\ proposal = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 1 @@ f4 :> 0 @@ a :> 1)
+/\ proposal = (f1 :> 2 @@ f2 :> 1 @@ f3 :> 0 @@ f4 :> 0 @@ a :> 0)
 /\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
 /\ config = ( f1 :>
       [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
@@ -113,51 +111,13 @@ State 3: <Promise line 252, col 3 to line 266, col 61 of module Arbitration>
         barrier |-> [proposal |-> 0, index |-> 0],
         prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
 /\ committed = {}
-/\ role = (f1 :> "Follower" @@ f2 :> "Follower" @@ f3 :> "Candidate" @@ f4 :> "Follower")
-/\ promisedBy = (f1 :> {} @@ f2 :> {} @@ f3 :> {f3, a} @@ f4 :> {})
+/\ role = (f1 :> "Candidate" @@ f2 :> "Candidate" @@ f3 :> "Follower" @@ f4 :> "Follower")
+/\ promisedBy = (f1 :> {f1} @@ f2 :> {f2} @@ f3 :> {} @@ f4 :> {})
 
 State 4: <Promise line 252, col 3 to line 266, col 61 of module Arbitration>
 /\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
-/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f2 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f3 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
-  f4 :> [version |-> <<0, 0>>, members |-> {}] )
-/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> TRUE @@ f4 :> TRUE @@ a :> TRUE)
-/\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f2 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
-/\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
-/\ proposal = (f1 :> 1 @@ f2 :> 0 @@ f3 :> 1 @@ f4 :> 0 @@ a :> 1)
-/\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
-/\ config = ( f1 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f2 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f3 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f4 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  a :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
-/\ committed = {}
-/\ role = (f1 :> "Follower" @@ f2 :> "Follower" @@ f3 :> "Candidate" @@ f4 :> "Follower")
-/\ promisedBy = (f1 :> {} @@ f2 :> {} @@ f3 :> {f1, f3, a} @@ f4 :> {})
-
-State 5: <RecoverLog line 274, col 3 to line 284, col 28 of module Arbitration>
-/\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
-/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f2 :> [version |-> <<0, 0>>, members |-> {}] @@
+/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
+  f2 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
   f3 :> [version |-> <<0, 0>>, members |-> {}] @@
   f4 :> [version |-> <<0, 0>>, members |-> {}] )
 /\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> TRUE @@ f4 :> TRUE @@ a :> TRUE)
@@ -166,7 +126,7 @@ State 5: <RecoverLog line 274, col 3 to line 284, col 28 of module Arbitration>
   f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
   f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
 /\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
-/\ proposal = (f1 :> 1 @@ f2 :> 0 @@ f3 :> 1 @@ f4 :> 0 @@ a :> 1)
+/\ proposal = (f1 :> 2 @@ f2 :> 1 @@ f3 :> 2 @@ f4 :> 0 @@ a :> 0)
 /\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
 /\ config = ( f1 :>
       [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
@@ -189,16 +149,215 @@ State 5: <RecoverLog line 274, col 3 to line 284, col 28 of module Arbitration>
         barrier |-> [proposal |-> 0, index |-> 0],
         prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
 /\ committed = {}
-/\ role = ( f1 :> "Follower" @@
-  f2 :> "Follower" @@
-  f3 :> "Reconfirming" @@
-  f4 :> "Follower" )
-/\ promisedBy = (f1 :> {} @@ f2 :> {} @@ f3 :> {f1, f3, a} @@ f4 :> {})
+/\ role = (f1 :> "Candidate" @@ f2 :> "Candidate" @@ f3 :> "Follower" @@ f4 :> "Follower")
+/\ promisedBy = (f1 :> {f1, f3} @@ f2 :> {f2} @@ f3 :> {} @@ f4 :> {})
 
-State 6: <StartWorking line 309, col 3 to line 312, col 65 of module Arbitration>
-/\ pendingChange = ( f1 :> None @@
+State 5: <Promise line 252, col 3 to line 266, col 61 of module Arbitration>
+/\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
+/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
+  f2 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
+  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
+  f4 :> [version |-> <<0, 0>>, members |-> {}] )
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> TRUE @@ f4 :> TRUE @@ a :> TRUE)
+/\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f2 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
+/\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
+/\ proposal = (f1 :> 2 @@ f2 :> 1 @@ f3 :> 2 @@ f4 :> 1 @@ a :> 0)
+/\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
+/\ config = ( f1 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f3 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f4 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ role = (f1 :> "Candidate" @@ f2 :> "Candidate" @@ f3 :> "Follower" @@ f4 :> "Follower")
+/\ promisedBy = (f1 :> {f1, f3} @@ f2 :> {f2, f4} @@ f3 :> {} @@ f4 :> {})
+
+State 6: <Promise line 252, col 3 to line 266, col 61 of module Arbitration>
+/\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
+/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
+  f2 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
+  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
+  f4 :> [version |-> <<0, 0>>, members |-> {}] )
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> TRUE @@ f4 :> TRUE @@ a :> TRUE)
+/\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f2 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
+/\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
+/\ proposal = (f1 :> 2 @@ f2 :> 1 @@ f3 :> 2 @@ f4 :> 2 @@ a :> 0)
+/\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
+/\ config = ( f1 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f3 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f4 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ role = (f1 :> "Candidate" @@ f2 :> "Candidate" @@ f3 :> "Follower" @@ f4 :> "Follower")
+/\ promisedBy = (f1 :> {f1, f3, f4} @@ f2 :> {f2, f4} @@ f3 :> {} @@ f4 :> {})
+
+State 7: <RecoverLog line 274, col 3 to line 284, col 28 of module Arbitration>
+/\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
+/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
+  f2 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
+  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
+  f4 :> [version |-> <<0, 0>>, members |-> {}] )
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> TRUE @@ f4 :> TRUE @@ a :> TRUE)
+/\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f2 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
+/\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
+/\ proposal = (f1 :> 2 @@ f2 :> 1 @@ f3 :> 2 @@ f4 :> 2 @@ a :> 0)
+/\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
+/\ config = ( f1 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f3 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f4 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ role = ( f1 :> "Reconfirming" @@
+  f2 :> "Candidate" @@
+  f3 :> "Follower" @@
+  f4 :> "Follower" )
+/\ promisedBy = (f1 :> {f1, f3, f4} @@ f2 :> {f2, f4} @@ f3 :> {} @@ f4 :> {})
+
+State 8: <Promise line 252, col 3 to line 266, col 61 of module Arbitration>
+/\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
+/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
+  f2 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
+  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
+  f4 :> [version |-> <<0, 0>>, members |-> {}] )
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> TRUE @@ f4 :> TRUE @@ a :> TRUE)
+/\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f2 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
+/\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
+/\ proposal = (f1 :> 2 @@ f2 :> 1 @@ f3 :> 2 @@ f4 :> 2 @@ a :> 1)
+/\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
+/\ config = ( f1 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f3 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f4 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ role = ( f1 :> "Reconfirming" @@
+  f2 :> "Candidate" @@
+  f3 :> "Follower" @@
+  f4 :> "Follower" )
+/\ promisedBy = (f1 :> {f1, f3, f4} @@ f2 :> {f2, f4, a} @@ f3 :> {} @@ f4 :> {})
+
+State 9: <Degrade line 359, col 3 to line 362, col 66 of module Arbitration>
+/\ pendingChange = ( f1 :> [kind |-> "Degrade", acks |-> {f1}] @@
   f2 :> None @@
-  f3 :> [kind |-> "StartWorking", acks |-> {f3}] @@
+  f3 :> None @@
+  f4 :> None )
+/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
+  f2 :> [version |-> <<0, 0>>, members |-> {f1, f2, f3, f4, a}] @@
+  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
+  f4 :> [version |-> <<0, 0>>, members |-> {}] )
+/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> TRUE @@ f4 :> TRUE @@ a :> TRUE)
+/\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f2 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
+  f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
+/\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
+/\ proposal = (f1 :> 2 @@ f2 :> 1 @@ f3 :> 2 @@ f4 :> 2 @@ a :> 1)
+/\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
+/\ config = ( f1 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f4}, version |-> <<2, 1>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f2 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f3 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  f4 :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
+  a :>
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+        barrier |-> [proposal |-> 0, index |-> 0],
+        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
+/\ committed = {}
+/\ role = ( f1 :> "Reconfirming" @@
+  f2 :> "Candidate" @@
+  f3 :> "Follower" @@
+  f4 :> "Follower" )
+/\ promisedBy = (f1 :> {f1, f3, f4} @@ f2 :> {f2, f4, a} @@ f3 :> {} @@ f4 :> {})
+
+State 10: <RecoverLog line 274, col 3 to line 284, col 28 of module Arbitration>
+/\ pendingChange = ( f1 :> [kind |-> "Degrade", acks |-> {f1}] @@
+  f2 :> None @@
+  f3 :> None @@
   f4 :> None )
 /\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
   f2 :> [version |-> <<0, 0>>, members |-> {}] @@
@@ -210,10 +369,10 @@ State 6: <StartWorking line 309, col 3 to line 312, col 65 of module Arbitration
   f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
   f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
 /\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
-/\ proposal = (f1 :> 1 @@ f2 :> 0 @@ f3 :> 1 @@ f4 :> 0 @@ a :> 1)
+/\ proposal = (f1 :> 2 @@ f2 :> 1 @@ f3 :> 2 @@ f4 :> 2 @@ a :> 1)
 /\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
 /\ config = ( f1 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+      [ curr |-> [commitGroup |-> {f1, f2, f4}, version |-> <<2, 1>>],
         barrier |-> [proposal |-> 0, index |-> 0],
         prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
   f2 :>
@@ -221,7 +380,7 @@ State 6: <StartWorking line 309, col 3 to line 312, col 65 of module Arbitration
         barrier |-> [proposal |-> 0, index |-> 0],
         prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
   f3 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
         barrier |-> [proposal |-> 0, index |-> 0],
         prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
   f4 :>
@@ -233,16 +392,16 @@ State 6: <StartWorking line 309, col 3 to line 312, col 65 of module Arbitration
         barrier |-> [proposal |-> 0, index |-> 0],
         prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
 /\ committed = {}
-/\ role = ( f1 :> "Follower" @@
-  f2 :> "Follower" @@
-  f3 :> "Reconfirming" @@
+/\ role = ( f1 :> "Reconfirming" @@
+  f2 :> "Reconfirming" @@
+  f3 :> "Follower" @@
   f4 :> "Follower" )
-/\ promisedBy = (f1 :> {} @@ f2 :> {} @@ f3 :> {f1, f3, a} @@ f4 :> {})
+/\ promisedBy = (f1 :> {f1, f3, f4} @@ f2 :> {f2, f4, a} @@ f3 :> {} @@ f4 :> {})
 
-State 7: <AcceptConfig line 381, col 3 to line 402, col 48 of module Arbitration>
-/\ pendingChange = ( f1 :> None @@
-  f2 :> None @@
-  f3 :> [kind |-> "StartWorking", acks |-> {f3, a}] @@
+State 11: <Degrade line 359, col 3 to line 362, col 66 of module Arbitration>
+/\ pendingChange = ( f1 :> [kind |-> "Degrade", acks |-> {f1}] @@
+  f2 :> [kind |-> "Degrade", acks |-> {f2}] @@
+  f3 :> None @@
   f4 :> None )
 /\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
   f2 :> [version |-> <<0, 0>>, members |-> {}] @@
@@ -254,18 +413,18 @@ State 7: <AcceptConfig line 381, col 3 to line 402, col 48 of module Arbitration
   f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
   f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
 /\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
-/\ proposal = (f1 :> 1 @@ f2 :> 0 @@ f3 :> 1 @@ f4 :> 0 @@ a :> 1)
+/\ proposal = (f1 :> 2 @@ f2 :> 1 @@ f3 :> 2 @@ f4 :> 2 @@ a :> 1)
 /\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
 /\ config = ( f1 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+      [ curr |-> [commitGroup |-> {f1, f2, f4}, version |-> <<2, 1>>],
         barrier |-> [proposal |-> 0, index |-> 0],
         prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
   f2 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
+      [ curr |-> [commitGroup |-> {f2, f3, f4}, version |-> <<1, 1>>],
         barrier |-> [proposal |-> 0, index |-> 0],
         prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
   f3 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
         barrier |-> [proposal |-> 0, index |-> 0],
         prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
   f4 :>
@@ -273,248 +432,12 @@ State 7: <AcceptConfig line 381, col 3 to line 402, col 48 of module Arbitration
         barrier |-> [proposal |-> 0, index |-> 0],
         prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
   a :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
+      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
         barrier |-> [proposal |-> 0, index |-> 0],
         prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
 /\ committed = {}
-/\ role = ( f1 :> "Follower" @@
-  f2 :> "Follower" @@
-  f3 :> "Reconfirming" @@
+/\ role = ( f1 :> "Reconfirming" @@
+  f2 :> "Reconfirming" @@
+  f3 :> "Follower" @@
   f4 :> "Follower" )
-/\ promisedBy = (f1 :> {} @@ f2 :> {} @@ f3 :> {f1, f3, a} @@ f4 :> {})
-
-State 8: <AcceptConfig line 381, col 3 to line 402, col 48 of module Arbitration>
-/\ pendingChange = ( f1 :> None @@
-  f2 :> None @@
-  f3 :> [kind |-> "StartWorking", acks |-> {f2, f3, a}] @@
-  f4 :> None )
-/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f2 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f4 :> [version |-> <<0, 0>>, members |-> {}] )
-/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> TRUE @@ f4 :> TRUE @@ a :> TRUE)
-/\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f2 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
-/\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
-/\ proposal = (f1 :> 1 @@ f2 :> 1 @@ f3 :> 1 @@ f4 :> 0 @@ a :> 1)
-/\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
-/\ config = ( f1 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f2 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f3 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f4 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  a :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
-/\ committed = {}
-/\ role = ( f1 :> "Follower" @@
-  f2 :> "Follower" @@
-  f3 :> "Reconfirming" @@
-  f4 :> "Follower" )
-/\ promisedBy = (f1 :> {} @@ f2 :> {} @@ f3 :> {f1, f3, a} @@ f4 :> {})
-
-State 9: <CrashLive line 728, col 17 to line 728, col 80 of module Arbitration>
-/\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
-/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f2 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f4 :> [version |-> <<0, 0>>, members |-> {}] )
-/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> FALSE @@ f4 :> TRUE @@ a :> TRUE)
-/\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f2 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
-/\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
-/\ proposal = (f1 :> 1 @@ f2 :> 1 @@ f3 :> 1 @@ f4 :> 0 @@ a :> 1)
-/\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
-/\ config = ( f1 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f2 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f3 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f4 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  a :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
-/\ committed = {}
-/\ role = (f1 :> "Follower" @@ f2 :> "Follower" @@ f3 :> "Follower" @@ f4 :> "Follower")
-/\ promisedBy = (f1 :> {} @@ f2 :> {} @@ f3 :> {} @@ f4 :> {})
-
-State 10: <PrepareLive line 746, col 3 to line 749, col 29 of module Arbitration>
-/\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
-/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f2 :> [version |-> <<1, 1>>, members |-> {f1, f2, f3, f4, a}] @@
-  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f4 :> [version |-> <<0, 0>>, members |-> {}] )
-/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> FALSE @@ f4 :> TRUE @@ a :> TRUE)
-/\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f2 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
-/\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
-/\ proposal = (f1 :> 1 @@ f2 :> 2 @@ f3 :> 1 @@ f4 :> 0 @@ a :> 1)
-/\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
-/\ config = ( f1 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f2 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f3 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f4 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  a :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
-/\ committed = {}
-/\ role = (f1 :> "Follower" @@ f2 :> "Candidate" @@ f3 :> "Follower" @@ f4 :> "Follower")
-/\ promisedBy = (f1 :> {} @@ f2 :> {f2} @@ f3 :> {} @@ f4 :> {})
-
-State 11: <Promise line 252, col 3 to line 266, col 61 of module Arbitration>
-/\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
-/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f2 :> [version |-> <<1, 1>>, members |-> {f1, f2, f3, f4, a}] @@
-  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f4 :> [version |-> <<0, 0>>, members |-> {}] )
-/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> FALSE @@ f4 :> TRUE @@ a :> TRUE)
-/\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f2 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
-/\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
-/\ proposal = (f1 :> 2 @@ f2 :> 2 @@ f3 :> 1 @@ f4 :> 0 @@ a :> 1)
-/\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
-/\ config = ( f1 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f2 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f3 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f4 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  a :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
-/\ committed = {}
-/\ role = (f1 :> "Follower" @@ f2 :> "Candidate" @@ f3 :> "Follower" @@ f4 :> "Follower")
-/\ promisedBy = (f1 :> {} @@ f2 :> {f1, f2} @@ f3 :> {} @@ f4 :> {})
-
-State 12: <Promise line 252, col 3 to line 266, col 61 of module Arbitration>
-/\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
-/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f2 :> [version |-> <<1, 1>>, members |-> {f1, f2, f3, f4, a}] @@
-  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f4 :> [version |-> <<0, 0>>, members |-> {}] )
-/\ alive = (f1 :> TRUE @@ f2 :> TRUE @@ f3 :> FALSE @@ f4 :> TRUE @@ a :> TRUE)
-/\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f2 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
-/\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
-/\ proposal = (f1 :> 2 @@ f2 :> 2 @@ f3 :> 1 @@ f4 :> 2 @@ a :> 1)
-/\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
-/\ config = ( f1 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f2 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f3 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f4 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  a :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
-/\ committed = {}
-/\ role = (f1 :> "Follower" @@ f2 :> "Candidate" @@ f3 :> "Follower" @@ f4 :> "Follower")
-/\ promisedBy = (f1 :> {} @@ f2 :> {f1, f2, f4} @@ f3 :> {} @@ f4 :> {})
-
-State 13: <CrashLive line 728, col 17 to line 728, col 80 of module Arbitration>
-/\ pendingChange = (f1 :> None @@ f2 :> None @@ f3 :> None @@ f4 :> None)
-/\ prepareConfig = ( f1 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f2 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f3 :> [version |-> <<0, 0>>, members |-> {}] @@
-  f4 :> [version |-> <<0, 0>>, members |-> {}] )
-/\ alive = (f1 :> TRUE @@ f2 :> FALSE @@ f3 :> FALSE @@ f4 :> TRUE @@ a :> TRUE)
-/\ matchIndex = ( f1 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f2 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f3 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) @@
-  f4 :> (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0) )
-/\ log = (f1 :> <<>> @@ f2 :> <<>> @@ f3 :> <<>> @@ f4 :> <<>>)
-/\ proposal = (f1 :> 2 @@ f2 :> 2 @@ f3 :> 1 @@ f4 :> 2 @@ a :> 1)
-/\ commitIndex = (f1 :> 0 @@ f2 :> 0 @@ f3 :> 0 @@ f4 :> 0)
-/\ config = ( f1 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f2 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f3 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  f4 :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] @@
-  a :>
-      [ curr |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<1, 1>>],
-        barrier |-> [proposal |-> 0, index |-> 0],
-        prev |-> [commitGroup |-> {f1, f2, f3, f4}, version |-> <<0, 0>>] ] )
-/\ committed = {}
-/\ role = (f1 :> "Follower" @@ f2 :> "Follower" @@ f3 :> "Follower" @@ f4 :> "Follower")
-/\ promisedBy = (f1 :> {} @@ f2 :> {} @@ f3 :> {} @@ f4 :> {})
-
-State 14: Stuttering
+/\ promisedBy = (f1 :> {f1, f3, f4} @@ f2 :> {f2, f4, a} @@ f3 :> {} @@ f4 :> {})

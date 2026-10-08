@@ -1,25 +1,10 @@
 --- a/arbitration/Arbitration.tla
 +++ b/arbitration/Arbitration.tla
-@@ -311,22 +311,10 @@
- \* The change commits once a majority of the NEW election members persisted
- \* it (is_reach_majority_).  Committing START_WORKING ends reconfirm and
- \* commits the recovered log up to the barrier (saved_end_lsn_).
--\*
--\* FIX (see findings.md, finding 4): a degrade merged into reconfirm
--\* (can_do_degrade) starts from a config the new leader inherited and does
--\* not know to be committed.  It must also be acked by a majority of that
--\* previous config's election members, so that the previous config has
--\* settled on a majority before the next change takes effect (the Raft rule
--\* for single-member changes).  The code requires only the new majority; in
--\* 4F1A two degrades by two leaders then jump two members past the last
--\* committed config and the quorums stop intersecting.  In 2F1A both
--\* majorities are {survivor, A}, so nothing changes there.
- CommitConfig(l) ==
-   /\ alive[l]
-   /\ cc[l] # None
-   /\ IsMajority(cc[l].acks, ElectionMembers(l))
--  /\ (cc[l].kind = "Degrade" /\ role[l] = "Reconfirm")
--        => IsMajority(cc[l].acks, meta[l].prev.sync \cup {A})
-   /\ cc' = [cc EXCEPT ![l] = None]
-   /\ IF cc[l].kind = "StartWorking"
-        THEN /\ role'      = [role EXCEPT ![l] = "Leader"]
+@@ -358,7 +358,6 @@
+ Degrade(l, s) ==
+   /\ role[l] \in {"Reconfirming", "Leader"}
+   /\ CanPropose(l)
+-  /\ ConfigConfirmed(l)
+   /\ CanDegrade(l, s)
+   /\ ProposeConfig(l, config[l].curr.commitGroup \ {s}, "Degrade")
+ 

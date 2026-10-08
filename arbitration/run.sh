@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Model-check one config of Arbitration.tla.
-# Usage: ./run.sh <Config> [extra TLC args]     e.g. ./run.sh Arbitration
+# Model-check one config of Arbitration.tla (or of $MODULE.tla).
+# Usage: [MODULE=<Module>] ./run.sh <Config> [extra TLC args]
+#   e.g. ./run.sh Arbitration;  MODULE=Pruned4F ./run.sh Pruned4F
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # Java: $JAVA, else Homebrew's OpenJDK if present, else `java` on PATH.
@@ -22,4 +23,4 @@ rm -rf "states/$CFG"
 # invariants and properties, not deadlock freedom.
 exec "$JAVA" -Xmx12g -XX:+UseParallelGC -cp "$JAR" tlc2.TLC \
   -deadlock -workers 8 -metadir "states/$CFG" \
-  -config "$CFG.cfg" "$@" Arbitration.tla
+  -config "$CFG.cfg" "$@" "${MODULE:-Arbitration}.tla"

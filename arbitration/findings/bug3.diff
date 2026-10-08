@@ -1,26 +1,26 @@
 --- a/arbitration/Arbitration.tla
 +++ b/arbitration/Arbitration.tla
-@@ -474,7 +474,6 @@
-   \/ \E l \in F, v \in Server       : SendMeta(v, l)
+@@ -578,7 +578,6 @@
+   \/ \E l \in F, v \in Server         : AcceptConfig(v, l)
+   \/ \E l \in F                       : CommitConfig(l)
+   \/ \E f \in F                       : ArbiterPushConfig(f)
+-  \/ \E f \in F                       : ArbiterAdoptProposal(f)
+   \/ \E l \in F                       : ClientWrite(l)
+   \/ \E f, l \in F                    : AcceptEntry(f, l)
+   \/ \E l \in F, i \in 1..MaxLogLen   : CommitEntries(l, i)
+@@ -785,7 +784,6 @@
+   \/ \E l \in F, v \in Server       : AcceptConfig(v, l)
    \/ \E l \in F                     : CommitConfig(l)
-   \/ \E f \in F                     : ArbPush(f)
--  \/ \E f \in F                     : ArbCatchUpPid(f)
-   \/ \E l \in F                     : Write(l)
-   \/ \E f, l \in F                  : Replicate(f, l)
-   \/ \E l \in F, i \in 1..MaxLogLen : CommitLog(l, i)
-@@ -626,7 +625,6 @@
-   \/ \E l \in F, v \in Server       : SendMeta(v, l)
-   \/ \E l \in F                     : CommitConfig(l)
-   \/ \E f \in F                     : ArbPushLive(f)
--  \/ \E f \in F                     : ArbCatchUpLive(f)
-   \/ \E l \in F                     : Write(l)
-   \/ \E f, l \in F                  : Replicate(f, l)
-   \/ \E l \in F, i \in 1..MaxLogLen : CommitLog(l, i)
-@@ -642,7 +640,6 @@
-   /\ \A l \in F, v \in Server       : WF_vars(SendMeta(v, l))
+   \/ \E f \in F                     : ArbiterPushLive(f)
+-  \/ \E f \in F                     : ArbiterAdoptLive(f)
+   \/ \E l \in F                     : ClientWrite(l)
+   \/ \E f, l \in F                  : AcceptEntry(f, l)
+   \/ \E l \in F, i \in 1..MaxLogLen : CommitEntries(l, i)
+@@ -802,7 +800,6 @@
+   /\ \A l \in F, v \in Server       : WF_vars(AcceptConfig(v, l))
    /\ \A l \in F                     : WF_vars(CommitConfig(l))
-   /\ \A f \in F                     : WF_vars(ArbPushLive(f))
--  /\ \A f \in F                     : WF_vars(ArbCatchUpLive(f))
-   /\ \A f, l \in F                  : WF_vars(Replicate(f, l))
-   /\ \A l \in F, i \in 1..MaxLogLen : WF_vars(CommitLog(l, i))
+   /\ \A f \in F                     : WF_vars(ArbiterPushLive(f))
+-  /\ \A f \in F                     : WF_vars(ArbiterAdoptLive(f))
+   /\ \A f, l \in F                  : WF_vars(AcceptEntry(f, l))
+   /\ \A l \in F, i \in 1..MaxLogLen : WF_vars(CommitEntries(l, i))
  

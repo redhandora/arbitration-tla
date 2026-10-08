@@ -1,10 +1,10 @@
 --- a/arbitration/Arbitration.tla
 +++ b/arbitration/Arbitration.tla
-@@ -205,7 +205,6 @@
+@@ -253,7 +253,6 @@
    /\ alive[c]
    /\ alive[v]
-   /\ v \in pq[c].mem \ {c}
--  /\ VersionLE(meta[v].curr.ver, pq[c].ver)
-   /\ pid[v] < pid[c]
-   /\ pid'      = [pid EXCEPT ![v] = pid[c]]
-   /\ role'     = RoleAfter(v, pid[c])
+   /\ v \in prepareConfig[c].members \ {c}
+-  /\ VersionLE(config[v].curr.version, prepareConfig[c].version)
+   /\ proposal[v] < proposal[c]
+   /\ proposal'      = [proposal EXCEPT ![v] = proposal[c]]
+   /\ role'          = RoleAfter(v, proposal[c])

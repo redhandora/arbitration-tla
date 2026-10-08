@@ -1,15 +1,15 @@
 --- a/arbitration/Arbitration.tla
 +++ b/arbitration/Arbitration.tla
-@@ -349,7 +349,11 @@
-   /\ CanReceiveMeta(f, meta[A], pid[A])
-   /\ pid'      = [pid EXCEPT ![f] = pid[A]]
-   /\ meta'     = [meta EXCEPT ![f] = meta[A]]
--  /\ log'      = [log EXCEPT ![f] = LogAfterMeta(f, meta[A])]
-+  /\ log'      = [log EXCEPT ![f] =
-+                   IF Len(log[f]) > meta[A].barrier.idx
-+                      /\ log[f][meta[A].barrier.idx + 1] < pid[A]
-+                   THEN SubSeq(log[f], 1, meta[A].barrier.idx)
-+                   ELSE log[f]]
-   /\ role'     = RoleAfter(f, pid[A])
-   /\ promises' = PromisesAfter(f, pid[A])
-   /\ pq'       = PqAfter(f, pid[A])
+@@ -432,7 +432,11 @@
+   /\ ConfigAcceptable(f, config[A], proposal[A])
+   /\ proposal'      = [proposal EXCEPT ![f] = proposal[A]]
+   /\ config'        = [config EXCEPT ![f] = config[A]]
+-  /\ log'           = [log EXCEPT ![f] = TruncateStaleEntries(f, config[A])]
++  /\ log'           = [log EXCEPT ![f] =
++                         IF Len(log[f]) > config[A].barrier.index
++                            /\ log[f][config[A].barrier.index + 1] < proposal[A]
++                         THEN SubSeq(log[f], 1, config[A].barrier.index)
++                         ELSE log[f]]
+   /\ role'          = RoleAfter(f, proposal[A])
+   /\ promisedBy'    = PromisedByAfter(f, proposal[A])
+   /\ prepareConfig' = PrepareConfigAfter(f, proposal[A])
